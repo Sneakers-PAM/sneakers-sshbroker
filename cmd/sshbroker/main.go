@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,6 +21,8 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/audit"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/grpcsvc"
@@ -38,44 +41,54 @@ func env(k, def string) string {
 	return def
 }
 
-// newSharedStore builds the shared, Redis-backed reference ticket store, or
-// returns nil (degrading to single-replica in-memory) if REDIS_URL is unset,
-// malformed, or the server is unreachable. Redis is best-effort here: the
-// broker must still boot and serve single-replica when Redis is down, so any
-// failure is logged once as a warning rather than being fatal.
+// newTicketStore builds the ticket store from REDIS_URL.
 //
-// Note the returned *bredis.Client's own Close is not wired to a defer: the
-// process holds the shared store for its whole lifetime, and letting it go with
-// the process is fine for a best-effort dependency.
-func newSharedStore(ctx context.Context) session.TicketStore {
+//   - Unset: in-memory tickets only, so run one replica. The broker is ready
+//     at once.
+//   - Set: every reference ticket goes to Redis, never to memory. If Redis
+//     isn't answering yet the broker keeps trying in the background and stays
+//     not ready (gRPC health NOT_SERVING, /health 503, CreateSession
+//     Unavailable) until it does, so no replica mints a ticket the others
+//     can't redeem.
+//   - Malformed: the start fails, so a typo can't quietly split the replicas.
+//
+// The *bredis.Client is never closed: the process holds it for its lifetime.
+func newTicketStore(ctx context.Context, local *session.Store, onReady func()) *session.Composite {
 	logger := log.New(serviceName)
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
 		logger.Warn().Msg("REDIS_URL unset; sshbroker ticket store is in-memory only (single-replica)")
-		return nil
+		onReady()
+		return session.NewComposite(local, nil)
 	}
 
 	opt, err := goredis.ParseURL(redisURL)
 	if err != nil {
-		logger.Warn().Err(err).Msg("REDIS_URL invalid; sshbroker ticket store is in-memory only (single-replica)")
-		return nil
+		logger.Fatal().Err(err).Msg("REDIS_URL invalid")
 	}
-
-	dctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 	ropts := []bredis.Option{bredis.WithAddr(opt.Addr), bredis.WithDB(opt.DB)}
 	if opt.Password != "" {
 		ropts = append(ropts, bredis.WithPassword(opt.Password))
 	}
-	rc, err := bredis.Connect(dctx, ropts...)
-	if err != nil {
-		logger.Warn().Err(err).Msg("redis unreachable; sshbroker ticket store is in-memory only (single-replica)")
-		return nil
+	connect := func(ctx context.Context) (session.TicketStore, error) {
+		dctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		rc, err := bredis.Connect(dctx, ropts...)
+		if err != nil {
+			return nil, err
+		}
+		return session.NewRedisStore(rc), nil
 	}
 
-	logger.Info().Str("addr", opt.Addr).Msg("shared redis ticket store enabled (HA)")
-	return session.NewRedisStore(rc)
+	store := session.NewRequiredComposite(local)
+	logger.Info().Str("addr", opt.Addr).Msg("REDIS_URL set; reference tickets use the shared redis store only")
+	go func() {
+		if err := store.ConnectShared(ctx, connect, session.DefaultBackoff); err == nil {
+			onReady()
+		}
+	}()
+	return store
 }
 
 func main() {
@@ -96,15 +109,24 @@ func main() {
 		}
 	}()
 
+	// Readiness: the gRPC health check (the chart's probe) and /health report
+	// not ready until the ticket store is (see newTicketStore).
+	hs := health.NewServer()
+	hs.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
+	var ready atomic.Bool
+	onReady := func() {
+		ready.Store(true)
+		hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+		logger.Info().Msg("sshbroker ready")
+	}
+
 	// Ticket store. The pod-local in-memory store always exists (it holds
-	// inline-key sessions and is the fallback when Redis is absent). When
-	// REDIS_URL points at a reachable Redis, a shared reference store is added
-	// so >1 replica can redeem each other's reference tickets (HA).
-	// Redis is best-effort: an unreachable server degrades to single-replica
-	// (in-memory) with a single warning rather than failing to boot.
+	// inline-key sessions, and every ticket when REDIS_URL is unset). With
+	// REDIS_URL set, reference tickets go to Redis only, so any replica can
+	// redeem them (HA).
 	local := session.NewStore()
 	defer local.Close()
-	store := session.NewComposite(local, newSharedStore(ctx))
+	store := newTicketStore(ctx, local, onReady)
 	defer store.Close()
 
 	auditAddr := env("AUDIT_ADDR", "localhost:9194")
@@ -131,10 +153,7 @@ func main() {
 	// HTTP server: health check plus the WS session endpoint, sharing the
 	// same store instance as the gRPC CreateSession call.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	mux.HandleFunc("/health", server.HealthHandler(ready.Load))
 	// Serve the WS endpoint at both the bare path (dev/local defaults) and the
 	// protocol-namespaced path. An ingress that routes /proto to this service
 	// WITHOUT stripping the prefix delivers a browser connecting to
@@ -160,7 +179,7 @@ func main() {
 	broker := grpcsvc.NewBroker(store, auditEmitter, wsBase)
 
 	logger.Info().Str("grpc", grpcPort).Msg("starting sshbroker")
-	if err := server.Run(ctx, grpcPort, func(gs *grpc.Server) {
+	if err := server.RunWithHealth(ctx, grpcPort, hs, func(gs *grpc.Server) {
 		grpcsvc.RegisterServer(gs, broker)
 	}); err != nil {
 		logger.Fatal().Err(err).Msg("server exited")
