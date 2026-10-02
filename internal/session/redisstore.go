@@ -9,7 +9,6 @@ import (
 	"time"
 
 	bredis "github.com/Bugs5382/go-redis"
-	goredis "github.com/redis/go-redis/v9"
 )
 
 // ticketKeyPrefix namespaces sshbroker ticket keys in the shared Redis so they
@@ -43,7 +42,7 @@ type refTicket struct {
 // from the vault when the ticket is redeemed. Because no pod-local state is
 // needed to redeem, any broker replica can redeem any ticket (the HA property).
 type RedisStore struct {
-	rdb goredis.UniversalClient
+	rdb bredis.UniversalClient
 	ttl time.Duration
 }
 
