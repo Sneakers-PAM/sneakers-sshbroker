@@ -6,8 +6,6 @@ require (
 	github.com/Bugs5382/go-log v1.3.0
 	github.com/Bugs5382/go-otel v1.3.2
 	github.com/Bugs5382/go-redis v1.2.0
-	github.com/Sneakers-PAM/sneakers-audit v0.0.0-20261002074856-31fe7af87c02
-	github.com/Sneakers-PAM/sneakers-vault v0.0.0-20261002075917-17e5b028016e
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/redis/go-redis/v9 v9.22.0

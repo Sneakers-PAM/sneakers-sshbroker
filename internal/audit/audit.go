@@ -14,7 +14,7 @@ import (
 	"time"
 
 	log "github.com/Bugs5382/go-log"
-	auditv1 "github.com/Sneakers-PAM/sneakers-audit/gen/go/sneakers/audit/v1"
+	auditv1 "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/thirdparty/audit/v1"
 )
 
 // logger is package-scoped (type inferred from log.New) so callers never

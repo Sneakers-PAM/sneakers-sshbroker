@@ -4,10 +4,6 @@ github.com/Bugs5382/go-otel v1.3.2 h1:RNedETq9P9RFpxfJf8VWYQlBkqdf0RA8is8Oh8RdyT
 github.com/Bugs5382/go-otel v1.3.2/go.mod h1:UY0zaCYcarZQwgG+LONwwv224wpVueE6Yr2uuO3+7TU=
 github.com/Bugs5382/go-redis v1.2.0 h1:86yqK9NlZNhnglRaxFZdNV9o58+kAgwyfaoIW9WjaVc=
 github.com/Bugs5382/go-redis v1.2.0/go.mod h1:yyz0EuremryinY7TqW49ViZZX/Vbdvjvri1w1n9vthY=
-github.com/Sneakers-PAM/sneakers-audit v0.0.0-20261002074856-31fe7af87c02 h1:cLzEI+rclmXdbTPTS6uQwk4uw6Vn43XbFkM/3lSAqAw=
-github.com/Sneakers-PAM/sneakers-audit v0.0.0-20261002074856-31fe7af87c02/go.mod h1:BMYyWSeooMrbrqxkVFMszV6Qzxvysz69E20Jntz0x8w=
-github.com/Sneakers-PAM/sneakers-vault v0.0.0-20261002075917-17e5b028016e h1:Ou+d3+v1AYY2Riix4YIsJPt2bF+nuQhDA5SCNmUCJow=
-github.com/Sneakers-PAM/sneakers-vault v0.0.0-20261002075917-17e5b028016e/go.mod h1:wrO9OCCiaTP6AQrKHOMZ3XAMNPlU/s0RcXP92pzQCgg=
 github.com/alicebob/miniredis/v2 v2.38.0 h1:nZAzCR+Lj+Vxk4ZXzm2NuKq2O33RXj1XxJ2e2uP9jiw=
 github.com/alicebob/miniredis/v2 v2.38.0/go.mod h1:TcL7YfarKPGDAthEtl5NBeHZfeUQj6OXMm/+iu5cLMM=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

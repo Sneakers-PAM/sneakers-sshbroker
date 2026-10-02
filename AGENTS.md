@@ -34,8 +34,9 @@ every session is bounded by liveness checks and a maximum length. Keep it that w
 - Build: `task build`
 - Test: `task test`; the tests start an in-process Redis and an in-process SSH server, so nothing
   else is needed.
-- Lint: `task lint`, plus `buf lint` for the proto.
-- Generated code: `buf generate` with the plugin versions pinned in
+- Lint: `task lint`, plus `buf lint` for the proto (after `scripts/proto-generate.sh` has
+  fetched the vault and audit protos).
+- Generated code: `scripts/proto-generate.sh`, with the plugin versions pinned in
   `.github/workflows/job-go-lang-ci.yaml`.
 - License headers: `task license` (golic, the Apache-2.0 SPDX header in `.golic.yaml`).
 
@@ -64,7 +65,8 @@ Follow the logging rules in `CLAUDE.md`. In short:
   names.
 - Test keys, host keys and the test SSH server are generated at run time. Never commit a private
   key, host key, `known_hosts` entry, certificate or recorded session, not even a throwaway one.
-- The vault and audit APIs come from `github.com/Sneakers-PAM/sneakers-vault` and
-  `github.com/Sneakers-PAM/sneakers-audit` as pseudo-versions.
+- The vault and audit client stubs in `gen/go/thirdparty/` are generated from the commits pinned
+  in `proto-refs.env` (see docs/api.md, "Calling other services"); never import another
+  service's Go module.
 - The lint config exempts `HandlerWithConfig` in `internal/wsproxy` from the complexity linters; if
   you split it, keep the teardown (zeroize, remove from the store, audit) on every exit path.

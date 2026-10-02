@@ -5,9 +5,10 @@ The broker has two surfaces: a gRPC API for the gateway, and a WebSocket endpoin
 ## gRPC
 
 The service implements `sneakers.sshbroker.v1.SSHBrokerService`, defined in
-[proto/sneakers/sshbroker/v1/sshbroker.proto](../proto/sneakers/sshbroker/v1/sshbroker.proto). Go
-clients import the generated code from
-`github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1`.
+[proto/sneakers/sshbroker/v1/sshbroker.proto](../proto/sneakers/sshbroker/v1/sshbroker.proto).
+Other services don't import this module's Go code: they pin a commit of this repo and generate
+their own client stubs from that proto, the way the broker calls the vault and audit (see
+[Calling other services](#calling-other-services)).
 
 The server also registers the standard gRPC health service (`grpc.health.v1.Health`) and server
 reflection.
@@ -90,3 +91,22 @@ session carries on. No key material is ever put in an event.
 |---|---|---|
 | `session.start` | `CreateSession` | `host`, `target_id` |
 | `session.end` | the session ends, or fails at any point after its ticket was consumed (a host-key refusal included, with its reason) | `target_id`, `duration_ms`, `reason` |
+
+## Calling other services
+
+The broker never imports another service's Go module. It generates its own client stubs from each
+callee's protos, pinned by commit:
+
+- `proto-refs.env` pins each callee: `SNEAKERS_AUDIT_REF=<commit>` for `Sneakers-PAM/sneakers-audit`
+  and `SNEAKERS_VAULT_REF=<commit>` for `Sneakers-PAM/sneakers-vault`.
+- `scripts/proto-generate.sh` downloads only the callee's `proto/` at that commit into `.protos/`
+  (git-ignored) and runs `buf generate`. The stubs land in `gen/go/thirdparty/audit/v1` and
+  `gen/go/thirdparty/vault/v1`, inside this module, so they can't collide with the owner's Go
+  packages. The stubs are committed, so a build needs no network; the protos never are.
+- To try an unmerged proto change, point `SNEAKERS_AUDIT_PROTO_DIR` and `SNEAKERS_VAULT_PROTO_DIR`
+  at a local `proto/` directory and run the script.
+- To move to a newer callee, change its ref, run the script and commit `proto-refs.env` and `gen/`
+  together. Build & Test fails when `gen/` doesn't match the pins.
+- The `proto-sync` check (from `Sneakers-PAM/.github`) fails a PR whose pin isn't on the owner's
+  `main` or that the owner's `main` breaks, and warns when `main` has moved on. On a schedule it
+  opens a PR that bumps stale pins.
