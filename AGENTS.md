@@ -26,6 +26,10 @@ every session is bounded by liveness checks and a maximum length. Keep it that w
 - `internal/audit/` - the best-effort `session.start` and `session.end` events.
 - `internal/safeconv/` - the bounds-checked int to int32 conversion.
 - `internal/server/` - the gRPC server bootstrap.
+- `internal/workloadauth/` - service-to-service workload authentication, a byte-for-byte copy of
+  the package in sneakers-vault at `SNEAKERS_VAULT_REF` (checked by `scripts/workloadauth-check.sh`).
+  Never edit it here: change it in the vault, then copy it again. The broker's allow-list is
+  `internal/grpcsvc/callers.go`.
 - `proto/` - the API; `gen/go/` - the generated Go (committed, checked current in CI).
 - `docs/` - configuration, API and runbook.
 

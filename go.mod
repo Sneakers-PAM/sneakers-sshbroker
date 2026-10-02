@@ -7,6 +7,7 @@ require (
 	github.com/Bugs5382/go-otel v1.3.2
 	github.com/Bugs5382/go-redis v1.2.0
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/redis/go-redis/v9 v9.22.0
 	go.opentelemetry.io/otel v1.45.0

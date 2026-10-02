@@ -29,6 +29,7 @@ import (
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/vault"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/workloadauth"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/wsproxy"
 )
 
@@ -110,6 +111,51 @@ func allowedOrigins(wsBase string) []string {
 	return []string{origin}
 }
 
+// callerDialOptions are the options for the broker's own calls (vault and
+// audit): plaintext, traced, and carrying the broker's workload token from
+// WORKLOAD_TOKEN_FILE when it is set. A set path that can't be read stops the
+// start.
+func callerDialOptions() []grpc.DialOption {
+	logger := log.New(serviceName)
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), server.ClientStatsHandler()}
+	tok, ok, err := workloadauth.DialOptionFromEnv(os.Getenv)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("workload token")
+	}
+	if !ok {
+		logger.Warn().Msg(workloadauth.EnvTokenFile + " unset; calls to the vault and audit carry no workload token")
+		return opts
+	}
+	logger.Info().Msg("calls to the vault and audit carry the workload token")
+	return append(opts, tok)
+}
+
+// workloadAuth returns the gRPC server options that check each caller's
+// workload token against grpcsvc.CallerPolicy (only the gateway may call
+// CreateSession). It fails closed: with no WORKLOAD_OIDC_ISSUER the start
+// fails unless WORKLOAD_AUTH=disabled, which trusts every caller and is for
+// local development only.
+func workloadAuth(ctx context.Context, aud *audit.Emitter) []grpc.ServerOption {
+	logger := log.New(serviceName)
+	lg := log.NewLogger(serviceName)
+	cfg, enabled, err := workloadauth.ServerConfigFromEnv(os.Getenv)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("workload authentication")
+	}
+	if !enabled {
+		go workloadauth.WarnDisabled(ctx, lg, workloadauth.DisabledWarnInterval)
+		return nil
+	}
+	v, err := workloadauth.NewVerifier(cfg, lg)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("workload verifier")
+	}
+	go v.Run(ctx)
+	logger.Info().Str("issuer", cfg.Issuer).Strs("allowed", cfg.AllowedServiceAccounts).
+		Msg("workload authentication on; CreateSession takes the gateway only")
+	return grpcsvc.AuthServerOptions(v, aud, lg)
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -148,8 +194,10 @@ func main() {
 	store := newTicketStore(ctx, local, onReady)
 	defer store.Close()
 
+	dialOpts := callerDialOptions()
+
 	auditAddr := env("AUDIT_ADDR", "localhost:9194")
-	auditConn, err := grpc.NewClient(auditAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), server.ClientStatsHandler())
+	auditConn, err := grpc.NewClient(auditAddr, dialOpts...)
 	if err != nil {
 		logger.Fatal().Err(err).Str("audit", auditAddr).Msg("dial audit")
 	}
@@ -160,7 +208,7 @@ func main() {
 	// from the vault (RevealSecretField, audited) with the ticket's actor at
 	// connect time, so key material is never carried in the shared ticket store.
 	vaultAddr := env("VAULT_ADDR", "localhost:9091")
-	vaultConn, err := grpc.NewClient(vaultAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), server.ClientStatsHandler())
+	vaultConn, err := grpc.NewClient(vaultAddr, dialOpts...)
 	if err != nil {
 		logger.Fatal().Err(err).Str("vault", vaultAddr).Msg("dial vault")
 	}
@@ -202,7 +250,7 @@ func main() {
 	logger.Info().Str("grpc", grpcPort).Msg("starting sshbroker")
 	if err := server.RunWithHealth(ctx, grpcPort, hs, func(gs *grpc.Server) {
 		grpcsvc.RegisterServer(gs, broker)
-	}); err != nil {
+	}, workloadAuth(ctx, auditEmitter)...); err != nil {
 		logger.Fatal().Err(err).Msg("server exited")
 	}
 }
