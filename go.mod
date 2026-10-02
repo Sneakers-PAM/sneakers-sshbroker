@@ -5,14 +5,14 @@ go 1.26.3
 toolchain go1.26.6
 
 require (
-	github.com/Bugs5382/go-log v1.2.0
+	github.com/Bugs5382/go-log v1.3.0
 	github.com/Bugs5382/go-otel v1.3.2
-	github.com/Bugs5382/go-redis v1.0.0
+	github.com/Bugs5382/go-redis v1.2.0
 	github.com/Sneakers-PAM/sneakers-audit v0.0.0-20261002005742-3950d2af099c
 	github.com/Sneakers-PAM/sneakers-vault v0.0.0-20261002020737-57e5cd367895
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/redis/go-redis/v9 v9.22.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0

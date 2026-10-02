@@ -1,9 +1,9 @@
-github.com/Bugs5382/go-log v1.2.0 h1:kebzXxMtygnO/ScKWbUVynBSm+TG7cVzEeutm12kqS4=
-github.com/Bugs5382/go-log v1.2.0/go.mod h1:OGgIWWKKNg2AXVJlbVJZb/s8dnqqsrKwWznYXik547E=
+github.com/Bugs5382/go-log v1.3.0 h1:lJv2iv6yL9l1Eqii62ArcJ1eoKbpLFdrY7L9gPNSqcI=
+github.com/Bugs5382/go-log v1.3.0/go.mod h1:OGgIWWKKNg2AXVJlbVJZb/s8dnqqsrKwWznYXik547E=
 github.com/Bugs5382/go-otel v1.3.2 h1:RNedETq9P9RFpxfJf8VWYQlBkqdf0RA8is8Oh8RdyTM=
 github.com/Bugs5382/go-otel v1.3.2/go.mod h1:UY0zaCYcarZQwgG+LONwwv224wpVueE6Yr2uuO3+7TU=
-github.com/Bugs5382/go-redis v1.0.0 h1:5MmDXnYDapfr7nzlwQhm9zhnrPzxkMzesYpPWjukiDI=
-github.com/Bugs5382/go-redis v1.0.0/go.mod h1:JtpDYQCbmfZx+WwbGaPMl9C7znQPYtsa5vHEsSVyimo=
+github.com/Bugs5382/go-redis v1.2.0 h1:86yqK9NlZNhnglRaxFZdNV9o58+kAgwyfaoIW9WjaVc=
+github.com/Bugs5382/go-redis v1.2.0/go.mod h1:yyz0EuremryinY7TqW49ViZZX/Vbdvjvri1w1n9vthY=
 github.com/Sneakers-PAM/sneakers-audit v0.0.0-20261002005742-3950d2af099c h1:0B8unyFNLj1MjLw96CsShjRASgratmBBrrWhGbDyK8E=
 github.com/Sneakers-PAM/sneakers-audit v0.0.0-20261002005742-3950d2af099c/go.mod h1:Nkqni/8l71Jn/0FohN9pPOCZ01y4FgBwQrlQ+IiM7bE=
 github.com/Sneakers-PAM/sneakers-vault v0.0.0-20261002020737-57e5cd367895 h1:RdXB6K9UUu+z1gMGrdUnmwjIBmsVQpDj1obDhkoz0lM=
@@ -43,8 +43,8 @@ github.com/mattn/go-isatty v0.0.21 h1:xYae+lCNBP7QuW4PUnNG61ffM4hVIfm+zUzDuSzYLG
 github.com/mattn/go-isatty v0.0.21/go.mod h1:ZXfXG4SQHsB/w3ZeOYbR0PrPwLy+n6xiMrJlRFqopa4=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/redis/go-redis/v9 v9.21.0 h1:FPBE4hhbAke+TLmcY3WkpbDffJEomdqPn3HYiqAtL9E=
-github.com/redis/go-redis/v9 v9.21.0/go.mod h1:v/M13XI1PVCDcm01VtPFOADfZtHf8YW3baQf57KlIkA=
+github.com/redis/go-redis/v9 v9.22.0 h1:laDvpYXTJtZLloinw1fA5Kqd6HAEH2XKxOkG/PDq2F0=
+github.com/redis/go-redis/v9 v9.22.0/go.mod h1:y2g0Wj8rQvuK0ELM+oxSudcLtC09JScs98I/X9gRWY4=
 github.com/rs/zerolog v1.35.1 h1:m7xQeoiLIiV0BCEY4Hs+j2NG4Gp2o2KPKmhnnLiazKI=
 github.com/rs/zerolog v1.35.1/go.mod h1:EjML9kdfa/RMA7h/6z6pYmq1ykOuA8/mjWaEvGI+jcw=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=

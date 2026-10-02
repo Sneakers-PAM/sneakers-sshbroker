@@ -17,6 +17,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// logger is the server's own logger. Logger.Ctx derives the trace-correlated
+// logger from it, so the service name is always this one.
+var logger = log.NewLogger("sshbroker")
+
 // RecoveryUnaryInterceptor returns a grpc.UnaryServerInterceptor that recovers
 // from panics raised anywhere in the downstream chain (inner interceptors and
 // the handler itself). On a panic it captures the stack, logs both the
@@ -61,16 +65,15 @@ func RecoveryStreamInterceptor() grpc.StreamServerInterceptor {
 // generic internal error that is safe to send to the caller.
 func recoverPanic(ctx context.Context, r any, method string) error {
 	stack := debug.Stack()
+	perr := errorFromPanic(r)
 
-	logger := log.Ctx(ctx)
-	logger.Error().
-		Interface("panic", r).
-		Str("method", method).
-		Bytes("stack", stack).
-		Msg("recovered from panic in grpc handler")
+	logger.Ctx(ctx).Error(perr, "recovered from panic in grpc handler",
+		log.F("panic", r),
+		log.F("method", method),
+		log.F("stack", string(stack)))
 
 	span := trace.SpanFromContext(ctx)
-	span.RecordError(errorFromPanic(r), trace.WithStackTrace(true))
+	span.RecordError(perr, trace.WithStackTrace(true))
 	span.SetStatus(otelcodes.Error, "panic recovered")
 
 	// Generic message only: never surface the panic value or stack to the caller.
