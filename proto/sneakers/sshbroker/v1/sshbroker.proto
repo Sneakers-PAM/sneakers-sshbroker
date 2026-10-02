@@ -28,6 +28,20 @@ service SSHBrokerService {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 }
 
+// PrincipalKind mirrors sneakers.vault.v1.PrincipalKind (same names and
+// numbers). Only a person in the web app starts a brokered session, so the
+// broker refuses every kind but PRINCIPAL_KIND_HUMAN. The zero value is HUMAN
+// because an ActorContext from a caller that predates this field must still
+// decode as a human.
+// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+enum PrincipalKind {
+  PRINCIPAL_KIND_HUMAN = 0;
+  PRINCIPAL_KIND_SERVICE_ACCOUNT = 1;
+  PRINCIPAL_KIND_WORKLOAD = 2;
+  // A human's personal token (MCP or agent use).
+  PRINCIPAL_KIND_USER_TOKEN = 3;
+}
+
 // ActorContext identifies the human actor a session is opened for. It mirrors
 // sneakers.vault.v1.ActorContext so the broker can pass it straight through to
 // the vault when fetching key material by reference; the vault enforces the
@@ -38,6 +52,10 @@ message ActorContext {
   bool is_site_admin = 2;          // gateway-resolved from identity (roles)
   bool is_root = 3;                // bootstrap super-admin
   repeated string group_names = 4; // gateway-resolved directory group memberships
+  // The kind of principal the gateway authenticated, as in
+  // sneakers.vault.v1.ActorContext.principal_kind (same field number). Any
+  // kind but HUMAN is refused with PermissionDenied, on both paths.
+  PrincipalKind principal_kind = 6;
 }
 
 message CreateSessionRequest {
