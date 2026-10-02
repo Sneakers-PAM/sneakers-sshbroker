@@ -33,7 +33,7 @@ in use) is logged at error level, but the process keeps running with gRPC only, 
 ## Health
 
 - HTTP: `GET /health` on `HTTP_PORT` answers `200 ok`.
-- gRPC: the standard health check, or the `sneakers.common.v1.HealthService/Check` RPC:
+- gRPC: the standard health check:
 
   ```bash
   grpcurl -plaintext localhost:9096 grpc.health.v1.Health/Check

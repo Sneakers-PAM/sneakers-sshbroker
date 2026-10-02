@@ -92,9 +92,8 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 	}, nil
 }
 
-// RegisterServer wires the sshbroker gRPC server into a grpc.Server,
-// alongside the health service.
+// RegisterServer wires the sshbroker gRPC server into a grpc.Server. The
+// standard gRPC health service is registered by internal/server.
 func RegisterServer(gs *grpc.Server, b *Broker) {
-	Register(gs)
 	sshbrokerv1.RegisterSSHBrokerServiceServer(gs, b)
 }

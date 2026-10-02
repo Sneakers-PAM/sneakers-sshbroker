@@ -17,7 +17,7 @@ every session is bounded by liveness checks and a maximum length. Keep it that w
 
 - `cmd/sshbroker/` - the service entrypoint: environment, the ticket stores, the audit and vault
   clients, the HTTP and gRPC servers.
-- `internal/grpcsvc/` - `CreateSession`, the small health service, and their tests.
+- `internal/grpcsvc/` - `CreateSession` and its tests.
 - `internal/session/` - the ticket stores: in-memory (holds inline keys), Redis (references only)
   and the composite that routes between them, with their tests.
 - `internal/wsproxy/` - the WebSocket endpoint: ticket redemption, key reveal, SSH dial, PTY, the
@@ -26,8 +26,7 @@ every session is bounded by liveness checks and a maximum length. Keep it that w
 - `internal/audit/` - the best-effort `session.start` and `session.end` events.
 - `internal/safeconv/` - the bounds-checked int to int32 conversion.
 - `internal/server/` - the gRPC server bootstrap.
-- `proto/` - the API (and the common health API); `gen/go/` - the generated Go (committed, checked
-  current in CI).
+- `proto/` - the API; `gen/go/` - the generated Go (committed, checked current in CI).
 - `docs/` - configuration, API and runbook.
 
 ## Build, test, lint

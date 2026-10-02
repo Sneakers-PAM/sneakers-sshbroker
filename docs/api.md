@@ -9,8 +9,8 @@ The service implements `sneakers.sshbroker.v1.SSHBrokerService`, defined in
 clients import the generated code from
 `github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1`.
 
-The server also registers the standard gRPC health service (`grpc.health.v1.Health`), the small
-`sneakers.common.v1.HealthService` (its `Check` answers `SERVING`), and server reflection.
+The server also registers the standard gRPC health service (`grpc.health.v1.Health`) and server
+reflection.
 
 The broker enforces no caller authorization itself: any caller that reaches the gRPC port can mint
 a ticket. Only the gateway is meant to call it, after it has authorized the user; run the broker
