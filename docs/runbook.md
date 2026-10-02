@@ -5,8 +5,10 @@
 - **Pin every SSH target's host keys** in the vault (`Target.ssh_host_keys`, set by a site admin)
   before anyone opens a session to it. The broker refuses a target with no pins and a host that
   presents any other key; see [Host key refusals](#host-key-refusals).
-- **Any origin is accepted** on the WebSocket endpoint; the single-use ticket is the only check.
-  Serve it through an ingress that terminates TLS (`wss://`) for the UI's host only.
+- **Set the UI's origin.** The WebSocket endpoint accepts browsers only from
+  `SSHBROKER_ALLOWED_ORIGINS`, which defaults to the origin of `SSHBROKER_PUBLIC_WS_URL` (the UI
+  on the same host). Set it when the web app is served from another origin. Serve the endpoint
+  through an ingress that terminates TLS (`wss://`).
 - **No caller authorization on gRPC.** Anyone who reaches the gRPC port can mint a ticket for any
   host, user and key reference (the vault still checks the actor on a reference reveal). Expose the
   gRPC port to the gateway only, for example with a network policy.

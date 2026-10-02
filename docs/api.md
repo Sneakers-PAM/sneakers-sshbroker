@@ -52,7 +52,13 @@ The response carries `session_id`, the `ticket`, `ws_url` (`SSHBROKER_PUBLIC_WS_
 The browser connects to `ws_url` with `?ticket=<ticket>`. The endpoint is served at both
 `/ssh/session` and `/proto/ssh/session`, so it works behind an ingress that keeps a `/proto` prefix.
 
-Before the upgrade the broker consumes the ticket, reveals the key when the ticket is a reference,
+First the broker checks the request's `Origin` header against the allowed origins
+(`SSHBROKER_ALLOWED_ORIGINS`, see [configuration](configuration.md)). A browser origin that isn't
+listed gets `403 origin not allowed`, and the ticket is left unused. A request with no `Origin`
+header isn't from a browser, so it can't be a cross-site WebSocket hijack, and it goes on to the
+ticket check.
+
+Before the upgrade the broker then consumes the ticket, reveals the key when the ticket is a reference,
 and dials the target. The dial checks the target's host key against the ticket's `host_keys` (it
 asks for the pinned keys' algorithms, so a host with several keys presents a pinned one). A
 host-key refusal reaches the client as its reason text: a WebSocket client gets the upgrade and
@@ -68,6 +74,7 @@ Any other failure there is a plain HTTP error and no upgrade:
 
 | Status | Body | Cause |
 |---|---|---|
+| 403 | `origin not allowed` | A browser `Origin` that isn't in `SSHBROKER_ALLOWED_ORIGINS`. The ticket stays unused. |
 | 403 | `invalid or expired ticket` | No ticket, an unknown or used ticket, or one past its time to live. |
 | 502 | `session key error` | The vault refused or failed the reveal, or no vault client is configured. |
 | 500 | `session key error` | The key could not be parsed (or the passphrase is wrong). |
