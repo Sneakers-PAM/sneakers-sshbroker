@@ -1,0 +1,74 @@
+// Copyright 2026 The Sneakers-PAM Authors
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package sneakers.sshbroker.v1;
+
+option go_package = "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1;sshbrokerv1";
+
+// SSHBrokerService is called only by the gateway (never the browser). The
+// gateway authorizes the user and hands session parameters here; the broker
+// returns a single-use ticket the browser presents to the WebSocket endpoint.
+//
+// The broker supports two ways of supplying the SSH key material for a session:
+//
+//   - Reference (preferred, HA): the gateway omits private_key/passphrase and
+//     instead supplies secret_id + an ActorContext. The broker stores only the
+//     reference in a shared ticket store and, when the browser redeems the
+//     ticket, fetches the key from the vault (RevealSecretField, audited) with
+//     that actor at connect time. Key material is therefore only ever resident
+//     in the vault and the single pod terminating the SSH session -- never in
+//     the shared ticket store -- so any broker replica can redeem any ticket.
+//   - Inline (back-compat): the gateway supplies private_key (+ passphrase).
+//     The broker keeps the key in the minting pod's memory only, so the ticket
+//     must be redeemed on that same pod (single-replica). Retained so an older
+//     gateway keeps working during a rollout; prefer the reference form.
+service SSHBrokerService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+}
+
+// ActorContext identifies the human actor a session is opened for. It mirrors
+// sneakers.vault.v1.ActorContext so the broker can pass it straight through to
+// the vault when fetching key material by reference; the vault enforces the
+// same RBAC it would have applied to the gateway, and records the audited
+// reveal. Used only on the reference path.
+message ActorContext {
+  string user_id = 1;              // set by the gateway from the session
+  bool is_site_admin = 2;          // gateway-resolved from identity (roles)
+  bool is_root = 3;                // bootstrap super-admin
+  repeated string group_names = 4; // gateway-resolved directory group memberships
+}
+
+message CreateSessionRequest {
+  string host = 1;
+  int32 port = 2;
+  string username = 3;
+  // Inline key material (back-compat). PEM; broker-memory only, zeroized on
+  // teardown. Leave empty to use the reference path (secret_id + actor).
+  string private_key = 4;
+  string passphrase = 5;
+  string actor_user_id = 6; // for audit only, NOT authz
+  string secret_id = 7;     // on the reference path, the secret to reveal at connect time
+  string target_id = 8;
+  int32 ttl_seconds = 9;    // connect deadline for the ticket (0 => default 30)
+  // actor is REQUIRED on the reference path (private_key empty): the broker
+  // passes it to the vault's RevealSecretField so the vault applies the same
+  // RBAC + audit it would have applied to the gateway. Ignored on the inline
+  // path.
+  ActorContext actor = 10;
+  // host_keys are the target's pinned SSH host keys, one OpenSSH public key
+  // per entry in authorized_keys form, copied from the vault target. The
+  // broker connects only when the host presents one of them: with none it
+  // refuses ("host key not pinned for this target"), and with others it
+  // refuses ("host key mismatch"). They travel on the ticket, including the
+  // shared-store copy (public keys, not secrets).
+  repeated string host_keys = 11;
+}
+
+message CreateSessionResponse {
+  string session_id = 1;
+  string ticket = 2;             // single-use, opaque
+  string ws_url = 3;             // base WS url (browser appends ?ticket=)
+  int32 expires_in_seconds = 4;
+}
