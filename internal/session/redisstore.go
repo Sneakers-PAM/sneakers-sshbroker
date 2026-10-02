@@ -22,8 +22,8 @@ const ticketKeyPrefix = "sneakers:sshbroker:ticket:"
 const redisOpTimeout = 3 * time.Second
 
 // refTicket is the JSON value stored in Redis for one pending ticket. It holds
-// ONLY a reference to the secret + the actor to reveal it with -- NEVER the
-// private key or passphrase. The redeeming pod fetches the key from the vault
+// ONLY a reference to the secret + the actor to reveal it with, plus the
+// target's pinned host keys (public) -- NEVER the private key or passphrase. The redeeming pod fetches the key from the vault
 // at connect time, so key material is never resident in the shared store.
 type refTicket struct {
 	ID          string    `json:"id"`
@@ -34,6 +34,7 @@ type refTicket struct {
 	SecretID    string    `json:"secretId"`
 	TargetID    string    `json:"targetId"`
 	Actor       Actor     `json:"actor"`
+	HostKeys    []string  `json:"hostKeys,omitempty"`
 	Started     time.Time `json:"started"`
 }
 
@@ -76,6 +77,7 @@ func (r *RedisStore) Create(p Params) (id, ticket string, expiresIn int) {
 		SecretID:    p.SecretID,
 		TargetID:    p.TargetID,
 		Actor:       p.Actor,
+		HostKeys:    p.HostKeys,
 		Started:     time.Now(),
 	}
 	// json.Marshal of this fixed, string/bool/[]string shape cannot fail.
@@ -125,6 +127,7 @@ func (r *RedisStore) Consume(ticket string) (*Session, bool) {
 		SecretID:    ref.SecretID,
 		TargetID:    ref.TargetID,
 		Actor:       ref.Actor,
+		HostKeys:    ref.HostKeys,
 	}, true
 }
 

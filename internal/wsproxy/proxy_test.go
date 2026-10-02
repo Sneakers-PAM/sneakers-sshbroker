@@ -44,8 +44,9 @@ func genClientKey(t *testing.T) (pemPriv string, pub ssh.PublicKey) {
 // startEchoSSHServer starts an in-process ssh server that accepts only
 // authorizedPub, honors pty-req/shell/window-change on a "session" channel,
 // and echoes whatever the client writes back to it (a synthetic
-// /bin/cat-alike shell). Runtime-synthetic host key.
-func startEchoSSHServer(t *testing.T, authorizedPub ssh.PublicKey) (host string, port int, stop func()) {
+// /bin/cat-alike shell). Runtime-synthetic host key, returned as the pin a
+// session needs to connect to it.
+func startEchoSSHServer(t *testing.T, authorizedPub ssh.PublicKey) (host string, port int, hostPin string, stop func()) {
 	t.Helper()
 	_, hostPriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -79,7 +80,7 @@ func startEchoSSHServer(t *testing.T, authorizedPub ssh.PublicKey) (host string,
 		}
 	}()
 	addr := ln.Addr().(*net.TCPAddr)
-	return "127.0.0.1", addr.Port, func() { _ = ln.Close() }
+	return "127.0.0.1", addr.Port, pinOf(hostSigner), func() { _ = ln.Close() }
 }
 
 func handleTestConn(c net.Conn, cfg *ssh.ServerConfig) {
@@ -138,7 +139,7 @@ func wsURLFor(srv *httptest.Server, ticket string) string {
 
 func TestHandlerEchoesSSHSession(t *testing.T) {
 	pemPriv, pub := genClientKey(t)
-	host, port, stop := startEchoSSHServer(t, pub)
+	host, port, hostPin, stop := startEchoSSHServer(t, pub)
 	defer stop()
 
 	store := newTestStore(t)
@@ -147,6 +148,7 @@ func TestHandlerEchoesSSHSession(t *testing.T) {
 		Port:       int32(port),
 		Username:   "tester",
 		PrivateKey: pemPriv,
+		HostKeys:   []string{hostPin},
 		TTL:        5 * time.Second,
 	})
 
@@ -179,7 +181,7 @@ func TestHandlerEchoesSSHSession(t *testing.T) {
 
 func TestHandlerResizeControlFrameDoesNotBreakEcho(t *testing.T) {
 	pemPriv, pub := genClientKey(t)
-	host, port, stop := startEchoSSHServer(t, pub)
+	host, port, hostPin, stop := startEchoSSHServer(t, pub)
 	defer stop()
 
 	store := newTestStore(t)
@@ -188,6 +190,7 @@ func TestHandlerResizeControlFrameDoesNotBreakEcho(t *testing.T) {
 		Port:       int32(port),
 		Username:   "tester",
 		PrivateKey: pemPriv,
+		HostKeys:   []string{hostPin},
 		TTL:        5 * time.Second,
 	})
 
@@ -238,7 +241,7 @@ func TestHandlerRejectsMissingOrInvalidTicket(t *testing.T) {
 
 func TestHandlerRemovesAndZeroizesSessionOnClose(t *testing.T) {
 	pemPriv, pub := genClientKey(t)
-	host, port, stop := startEchoSSHServer(t, pub)
+	host, port, hostPin, stop := startEchoSSHServer(t, pub)
 	defer stop()
 
 	store := newTestStore(t)
@@ -247,6 +250,7 @@ func TestHandlerRemovesAndZeroizesSessionOnClose(t *testing.T) {
 		Port:       int32(port),
 		Username:   "tester",
 		PrivateKey: pemPriv,
+		HostKeys:   []string{hostPin},
 		TTL:        5 * time.Second,
 	})
 
@@ -281,7 +285,7 @@ func TestHandlerRemovesAndZeroizesSessionOnClose(t *testing.T) {
 func TestHandlerRejectsWrongClientKey(t *testing.T) {
 	_, authorizedPub := genClientKey(t)
 	wrongPem, _ := genClientKey(t)
-	host, port, stop := startEchoSSHServer(t, authorizedPub)
+	host, port, hostPin, stop := startEchoSSHServer(t, authorizedPub)
 	defer stop()
 
 	store := newTestStore(t)
@@ -290,6 +294,7 @@ func TestHandlerRejectsWrongClientKey(t *testing.T) {
 		Port:       int32(port),
 		Username:   "tester",
 		PrivateKey: wrongPem,
+		HostKeys:   []string{hostPin},
 		TTL:        5 * time.Second,
 	})
 
@@ -329,7 +334,7 @@ func wsURLForHTTP(srv *httptest.Server, ticket string) string {
 // custom PingHandler.
 func TestHandlerTearsDownHungPeerWithinDeadline(t *testing.T) {
 	pemPriv, pub := genClientKey(t)
-	host, port, stop := startEchoSSHServer(t, pub)
+	host, port, hostPin, stop := startEchoSSHServer(t, pub)
 	defer stop()
 
 	store := newTestStore(t)
@@ -338,6 +343,7 @@ func TestHandlerTearsDownHungPeerWithinDeadline(t *testing.T) {
 		Port:       int32(port),
 		Username:   "tester",
 		PrivateKey: pemPriv,
+		HostKeys:   []string{hostPin},
 		TTL:        5 * time.Second,
 	})
 

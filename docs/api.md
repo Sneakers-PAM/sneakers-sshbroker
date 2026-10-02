@@ -32,6 +32,11 @@ the key in one of two forms:
   in the memory of the replica that minted it, so the browser must reach that same replica. This
   form is kept for older callers.
 
+`host_keys` carries the target's pinned SSH host keys, one OpenSSH public key per entry in
+authorized_keys form, as the vault returns them in `Target.ssh_host_keys`. They travel on the
+ticket (the Redis copy too; they are public keys). An entry that doesn't parse, or carries options,
+returns `InvalidArgument`. An empty list is accepted here, and the connection is then refused.
+
 A missing field returns `InvalidArgument`. `port` 0 means port 0 is dialled, so callers should
 send the target's port (22 for most targets). `ttl_seconds` 0 or less means 30 seconds.
 
@@ -44,7 +49,18 @@ The browser connects to `ws_url` with `?ticket=<ticket>`. The endpoint is served
 `/ssh/session` and `/proto/ssh/session`, so it works behind an ingress that keeps a `/proto` prefix.
 
 Before the upgrade the broker consumes the ticket, reveals the key when the ticket is a reference,
-and dials the target. A failure there is a plain HTTP error and no upgrade:
+and dials the target. The dial checks the target's host key against the ticket's `host_keys` (it
+asks for the pinned keys' algorithms, so a host with several keys presents a pinned one). A
+host-key refusal reaches the client as its reason text: a WebSocket client gets the upgrade and
+then a close frame with code 1008 (policy violation) and the reason, since a browser can't read
+the body of a failed handshake; any other client gets the reason as a 502 body.
+
+| Close or status | Reason | Cause |
+|---|---|---|
+| 1008, or 502 | `host key not pinned for this target` | The ticket has no `host_keys`. |
+| 1008, or 502 | `host key mismatch` | The host presented a key that isn't one of the `host_keys`. |
+
+Any other failure there is a plain HTTP error and no upgrade:
 
 | Status | Body | Cause |
 |---|---|---|
@@ -73,4 +89,4 @@ session carries on. No key material is ever put in an event.
 | Action | When | Attributes |
 |---|---|---|
 | `session.start` | `CreateSession` | `host`, `target_id` |
-| `session.end` | the session ends, or fails at any point after its ticket was consumed | `target_id`, `duration_ms`, `reason` |
+| `session.end` | the session ends, or fails at any point after its ticket was consumed (a host-key refusal included, with its reason) | `target_id`, `duration_ms`, `reason` |

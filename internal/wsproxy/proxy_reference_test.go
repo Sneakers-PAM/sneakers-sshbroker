@@ -65,7 +65,7 @@ func sharedRedisPods(t *testing.T) (mint, ws *session.RedisStore) {
 // would fail.
 func TestReferenceCrossReplicaRedeem(t *testing.T) {
 	pemPriv, pub := genClientKey(t)
-	host, port, stop := startEchoSSHServer(t, pub)
+	host, port, hostPin, stop := startEchoSSHServer(t, pub)
 	defer stop()
 
 	mintPod, wsPod := sharedRedisPods(t)
@@ -79,6 +79,7 @@ func TestReferenceCrossReplicaRedeem(t *testing.T) {
 		SecretID:    "sec-1",
 		ActorUserID: "user-9",
 		Actor:       session.Actor{UserID: "user-9", GroupNames: []string{"ops"}},
+		HostKeys:    []string{hostPin},
 		TTL:         5 * time.Second,
 	})
 

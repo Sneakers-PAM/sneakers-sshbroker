@@ -74,7 +74,10 @@ type Params struct {
 	SecretID    string
 	TargetID    string
 	Actor       Actor
-	TTL         time.Duration
+	// HostKeys are the target's pinned SSH host keys (authorized_keys form).
+	// Public keys, so they travel on every ticket, the shared one included.
+	HostKeys []string
+	TTL      time.Duration
 }
 
 // Session is a broker-memory-only record of a pending or active SSH
@@ -93,6 +96,7 @@ type Session struct {
 	SecretID    string
 	TargetID    string
 	Actor       Actor
+	HostKeys    []string
 }
 
 // ID returns the session's opaque store id, i.e. the key under which it is
@@ -188,6 +192,7 @@ func (s *Store) Create(p Params) (id, ticket string, expiresIn int) {
 		SecretID:    p.SecretID,
 		TargetID:    p.TargetID,
 		Actor:       p.Actor,
+		HostKeys:    p.HostKeys,
 	}
 
 	s.mu.Lock()

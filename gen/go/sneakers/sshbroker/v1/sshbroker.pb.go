@@ -114,7 +114,14 @@ type CreateSessionRequest struct {
 	// passes it to the vault's RevealSecretField so the vault applies the same
 	// RBAC + audit it would have applied to the gateway. Ignored on the inline
 	// path.
-	Actor         *ActorContext `protobuf:"bytes,10,opt,name=actor,proto3" json:"actor,omitempty"`
+	Actor *ActorContext `protobuf:"bytes,10,opt,name=actor,proto3" json:"actor,omitempty"`
+	// host_keys are the target's pinned SSH host keys, one OpenSSH public key
+	// per entry in authorized_keys form, copied from the vault target. The
+	// broker connects only when the host presents one of them: with none it
+	// refuses ("host key not pinned for this target"), and with others it
+	// refuses ("host key mismatch"). They travel on the ticket, including the
+	// shared-store copy (public keys, not secrets).
+	HostKeys      []string `protobuf:"bytes,11,rep,name=host_keys,json=hostKeys,proto3" json:"host_keys,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -219,6 +226,13 @@ func (x *CreateSessionRequest) GetActor() *ActorContext {
 	return nil
 }
 
+func (x *CreateSessionRequest) GetHostKeys() []string {
+	if x != nil {
+		return x.HostKeys
+	}
+	return nil
+}
+
 type CreateSessionResponse struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	SessionId        string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
@@ -297,7 +311,7 @@ const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
 	"\ris_site_admin\x18\x02 \x01(\bR\visSiteAdmin\x12\x17\n" +
 	"\ais_root\x18\x03 \x01(\bR\x06isRoot\x12\x1f\n" +
 	"\vgroup_names\x18\x04 \x03(\tR\n" +
-	"groupNames\"\xd5\x02\n" +
+	"groupNames\"\xf2\x02\n" +
 	"\x14CreateSessionRequest\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1a\n" +
@@ -313,7 +327,8 @@ const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
 	"\vttl_seconds\x18\t \x01(\x05R\n" +
 	"ttlSeconds\x129\n" +
 	"\x05actor\x18\n" +
-	" \x01(\v2#.sneakers.sshbroker.v1.ActorContextR\x05actor\"\x93\x01\n" +
+	" \x01(\v2#.sneakers.sshbroker.v1.ActorContextR\x05actor\x12\x1b\n" +
+	"\thost_keys\x18\v \x03(\tR\bhostKeys\"\x93\x01\n" +
 	"\x15CreateSessionResponse\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +

@@ -8,12 +8,14 @@
 package wsproxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -202,14 +204,22 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 			return
 		}
 
+		pins, pinAlgos := parsePins(sess)
 		cfgSSH := &ssh.ClientConfig{
-			User:            sess.Username,
-			Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: pin host keys before production use
-			Timeout:         10 * time.Second,
+			User:              sess.Username,
+			Auth:              []ssh.AuthMethod{ssh.PublicKeys(signer)},
+			HostKeyCallback:   pinnedHostKeyCallback(sess, pins),
+			HostKeyAlgorithms: pinAlgos,
+			Timeout:           10 * time.Second,
 		}
 		client, err := ssh.Dial("tcp", addr(sess), cfgSSH)
 		if err != nil {
+			if msg, ok := hostKeyRefusal(err); ok {
+				reason = msg
+				logFailure(sess, reason, err)
+				refuse(w, r, cfg, msg)
+				return
+			}
 			reason = "ssh dial failed"
 			logFailure(sess, reason, err)
 			http.Error(w, "ssh dial failed", http.StatusBadGateway)
@@ -415,6 +425,107 @@ func revealKey(ctx context.Context, keys KeyFetcher, sess *session.Session) (str
 	}
 	sess.SetKeyMaterial(priv, pass)
 	return "", nil
+}
+
+// The two host-key refusals. Their text is what the client is shown.
+var (
+	errHostKeyNotPinned = errors.New("host key not pinned for this target")
+	errHostKeyMismatch  = errors.New("host key mismatch")
+)
+
+// parsePins parses the session's pinned host keys and lists the host key
+// algorithms to ask for, so a host with several keys presents a pinned one.
+// Pins were checked by the vault and again by CreateSession; one that still
+// fails to parse is dropped, which can only make the check stricter.
+func parsePins(sess *session.Session) (pins []ssh.PublicKey, algos []string) {
+	for _, line := range sess.HostKeys {
+		pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+		if err != nil {
+			logger.Warn().Str("target_id", sess.TargetID).Msg("dropping a pinned host key that does not parse")
+			continue
+		}
+		pins = append(pins, pub)
+		for _, a := range hostKeyAlgorithmsFor(pub.Type()) {
+			if !slices.Contains(algos, a) {
+				algos = append(algos, a)
+			}
+		}
+	}
+	return pins, algos
+}
+
+// hostKeyAlgorithmsFor maps a key type to the host key algorithms that prove
+// it. An RSA key signs with SHA-2 only; the SHA-1 "ssh-rsa" algorithm is not
+// offered.
+func hostKeyAlgorithmsFor(keyType string) []string {
+	if keyType == ssh.KeyAlgoRSA {
+		return []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
+	}
+	return []string{keyType}
+}
+
+// pinnedHostKeyCallback accepts the host only when it presents one of the
+// pinned keys. It runs during key exchange, before the session's key is
+// offered, so an unverified host never sees the credential. It logs the
+// presented key's SHA256 fingerprint and the outcome, never key material.
+func pinnedHostKeyCallback(sess *session.Session, pins []ssh.PublicKey) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		fp := ssh.FingerprintSHA256(key)
+		ev := func(outcome string) {
+			logger.Info().
+				Str("host", sess.Host).
+				Str("target_id", sess.TargetID).
+				Str("secret_id", sess.SecretID).
+				Str("actor_user_id", sess.ActorUserID).
+				Str("host_key_fingerprint", fp).
+				Int("pinned_keys", len(pins)).
+				Str("outcome", outcome).
+				Msg("ssh host key check")
+		}
+		if len(pins) == 0 {
+			ev("not pinned")
+			return errHostKeyNotPinned
+		}
+		presented := key.Marshal()
+		for _, p := range pins {
+			if bytes.Equal(p.Marshal(), presented) {
+				ev("verified")
+				return nil
+			}
+		}
+		ev("mismatch")
+		return errHostKeyMismatch
+	}
+}
+
+// hostKeyRefusal reports whether a dial failed on the host key check, and the
+// message to show the client.
+func hostKeyRefusal(err error) (string, bool) {
+	switch {
+	case errors.Is(err, errHostKeyNotPinned):
+		return errHostKeyNotPinned.Error(), true
+	case errors.Is(err, errHostKeyMismatch):
+		return errHostKeyMismatch.Error(), true
+	}
+	return "", false
+}
+
+// refuse tells the client why the session was refused. A browser can't read
+// the body of a failed WebSocket handshake, so a WebSocket client gets the
+// upgrade and then a policy-violation close frame carrying msg; any other
+// client gets msg as a 502 body.
+func refuse(w http.ResponseWriter, r *http.Request, cfg Config, msg string) {
+	if !websocket.IsWebSocketUpgrade(r) {
+		http.Error(w, msg, http.StatusBadGateway)
+		return
+	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.WriteControl(websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.ClosePolicyViolation, msg), time.Now().Add(cfg.WriteWait))
 }
 
 // errNoKeyFetcher is returned when a reference ticket needs a vault fetch but no

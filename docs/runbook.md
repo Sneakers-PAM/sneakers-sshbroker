@@ -2,9 +2,9 @@
 
 ## Before you deploy
 
-- **Host keys aren't verified.** The broker accepts any host key from the target
-  (`ssh.InsecureIgnoreHostKey`), so it can't tell a target from something impersonating it on the
-  network path. Run it only where that path is trusted, until host-key pinning is added.
+- **Pin every SSH target's host keys** in the vault (`Target.ssh_host_keys`, set by a site admin)
+  before anyone opens a session to it. The broker refuses a target with no pins and a host that
+  presents any other key; see [Host key refusals](#host-key-refusals).
 - **Any origin is accepted** on the WebSocket endpoint; the single-use ticket is the only check.
   Serve it through an ingress that terminates TLS (`wss://`) for the UI's host only.
 - **No caller authorization on gRPC.** Anyone who reaches the gRPC port can mint a ticket for any
@@ -73,9 +73,26 @@ Common close reasons, which also appear in the `session.end` audit event:
 | `closed` | The browser or the target closed the session, or a liveness check ended it. |
 | `vault reveal failed` | The vault refused the actor or failed; check the vault's audit log. |
 | `key parse error` | The stored key isn't a valid private key, or its passphrase is wrong. |
+| `host key not pinned for this target` | The target has no SSH host keys pinned in the vault. |
+| `host key mismatch` | The host presented a key that isn't pinned for the target. |
 | `ssh dial failed` | The target is unreachable, or rejected the user or the key. |
 | `ws upgrade failed` | The browser's request wasn't a valid WebSocket upgrade. |
 | `pty request failed`, `shell start failed` | The target refused a PTY or a shell for this user. |
+
+## Host key refusals
+
+The broker checks the host key during key exchange, before it offers the session's key, so a host
+that fails the check never sees the credential. Each check logs `ssh host key check` at info level
+with the target id, the presented key's SHA256 fingerprint, the number of pins and the outcome
+(`verified`, `mismatch` or `not pinned`); key material is never logged.
+
+- **`host key not pinned for this target`:** a site admin adds the host's public key to the
+  target in the vault. Read it from the host itself (`ssh-keygen -lf
+  /etc/ssh/ssh_host_ed25519_key.pub` there shows the fingerprint to compare), not from a scan
+  across the network.
+- **`host key mismatch`:** compare the logged fingerprint with the host's own. If the host's keys
+  were changed on purpose, pin the new key and remove the old one. If they weren't, treat it as a
+  possible interception and don't re-pin.
 
 ## Shutdown
 

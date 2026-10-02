@@ -161,3 +161,21 @@ func TestRedisMissingTicketRejected(t *testing.T) {
 		t.Fatal("unknown ticket must be rejected")
 	}
 }
+
+// TestRedisTicketCarriesHostKeys: the target's pinned host keys travel on the
+// shared ticket, so the redeeming pod can verify the host it dials.
+func TestRedisTicketCarriesHostKeys(t *testing.T) {
+	_, newPod := newMiniRedis(t)
+	mint, redeem := newPod(), newPod()
+	p := refParams()
+	// The store does not parse pins; placeholders keep key-shaped data out of the source.
+	p.HostKeys = []string{"pinned-host-key-1", "pinned-host-key-2"}
+	_, ticket, _ := mint.Create(p)
+	sess, ok := redeem.Consume(ticket)
+	if !ok {
+		t.Fatal("ticket not redeemable on second pod")
+	}
+	if strings.Join(sess.HostKeys, "|") != strings.Join(p.HostKeys, "|") {
+		t.Fatalf("host keys after redeem = %q, want %q", sess.HostKeys, p.HostKeys)
+	}
+}

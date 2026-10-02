@@ -16,11 +16,12 @@ over the socket until either side closes.
 - 🧹 **Zeroized keys:** key material stays in the memory of the process running the session and is wiped on every exit path; it's never logged.
 - ⏱️ **Bounded sessions:** WebSocket ping and pong, SSH keepalives and an 8-hour cutoff end sessions whose peer has gone away.
 - 📜 **Audited:** session start and end are sent to the audit service.
+- 🔐 **Pinned host keys:** the broker connects only to a host that presents one of the target's pinned SSH host keys, and refuses unpinned targets.
 
 ## ⚠️ Before production
 
-Two gaps are open: the broker does not verify target host keys, and the WebSocket endpoint accepts
-any origin (the ticket is the only check). The gRPC API has no caller authorization of its own.
+One gap is open: the WebSocket endpoint accepts any origin (the ticket is the only check). The
+gRPC API has no caller authorization of its own.
 Read [docs/runbook.md](docs/runbook.md) before you deploy it.
 
 ## 🚀 Run it

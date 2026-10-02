@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -62,6 +63,14 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 		}
 	}
 
+	// Pins come from the vault, which checked them on save; a pin that does
+	// not parse here means a caller bypassed that, so refuse the ticket.
+	for i, k := range req.GetHostKeys() {
+		if _, _, opts, rest, err := ssh.ParseAuthorizedKey([]byte(k)); err != nil || len(opts) > 0 || len(rest) > 0 {
+			return nil, status.Errorf(codes.InvalidArgument, "host_keys[%d] is not an OpenSSH public key", i)
+		}
+	}
+
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
 
 	id, ticket, expiresIn := b.store.Create(session.Params{
@@ -79,7 +88,8 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 			IsRoot:      req.GetActor().GetIsRoot(),
 			GroupNames:  req.GetActor().GetGroupNames(),
 		},
-		TTL: ttl,
+		HostKeys: req.GetHostKeys(),
+		TTL:      ttl,
 	})
 
 	b.audit.Start(ctx, req.GetActorUserId(), req.GetSecretId(), req.GetTargetId(), req.GetHost())
