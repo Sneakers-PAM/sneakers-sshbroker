@@ -1896,6 +1896,7 @@ type SimulateFolderRequest struct {
 	SimIsRoot      bool                   `protobuf:"varint,5,opt,name=sim_is_root,json=simIsRoot,proto3" json:"sim_is_root,omitempty"`
 	SimGroupNames  []string               `protobuf:"bytes,6,rep,name=sim_group_names,json=simGroupNames,proto3" json:"sim_group_names,omitempty"`
 	DraftRules     []*RaciRule            `protobuf:"bytes,7,rep,name=draft_rules,json=draftRules,proto3" json:"draft_rules,omitempty"`
+	SimGroupIds    []string               `protobuf:"bytes,8,rep,name=sim_group_ids,json=simGroupIds,proto3" json:"sim_group_ids,omitempty"` // matched by GROUP rules that carry a subject_id
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1979,6 +1980,13 @@ func (x *SimulateFolderRequest) GetDraftRules() []*RaciRule {
 	return nil
 }
 
+func (x *SimulateFolderRequest) GetSimGroupIds() []string {
+	if x != nil {
+		return x.SimGroupIds
+	}
+	return nil
+}
+
 type SimulateFolderResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Decision      *RaciDecision          `protobuf:"bytes,1,opt,name=decision,proto3" json:"decision,omitempty"`
@@ -2032,6 +2040,7 @@ type SimulateSecretRequest struct {
 	SimIsRoot      bool                   `protobuf:"varint,5,opt,name=sim_is_root,json=simIsRoot,proto3" json:"sim_is_root,omitempty"`
 	SimGroupNames  []string               `protobuf:"bytes,6,rep,name=sim_group_names,json=simGroupNames,proto3" json:"sim_group_names,omitempty"`
 	DraftRules     []*RaciRule            `protobuf:"bytes,7,rep,name=draft_rules,json=draftRules,proto3" json:"draft_rules,omitempty"`
+	SimGroupIds    []string               `protobuf:"bytes,8,rep,name=sim_group_ids,json=simGroupIds,proto3" json:"sim_group_ids,omitempty"` // matched by GROUP rules that carry a subject_id
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2115,6 +2124,13 @@ func (x *SimulateSecretRequest) GetDraftRules() []*RaciRule {
 	return nil
 }
 
+func (x *SimulateSecretRequest) GetSimGroupIds() []string {
+	if x != nil {
+		return x.SimGroupIds
+	}
+	return nil
+}
+
 type SimulateSecretResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Decision      *RaciDecision          `protobuf:"bytes,1,opt,name=decision,proto3" json:"decision,omitempty"`
@@ -2191,11 +2207,15 @@ type Secret struct {
 	//	admin_count: the account has adminCount=1 (AD protected groups). It
 	//	  rotates with the self-service change only; OU-delegated admin reset
 	//	  does not apply to it.
-	BuiltinAdministrator bool   `protobuf:"varint,29,opt,name=builtin_administrator,json=builtinAdministrator,proto3" json:"builtin_administrator,omitempty"`
-	AdminCount           bool   `protobuf:"varint,30,opt,name=admin_count,json=adminCount,proto3" json:"admin_count,omitempty"`
-	HeartbeatOptOut      bool   `protobuf:"varint,21,opt,name=heartbeat_opt_out,json=heartbeatOptOut,proto3" json:"heartbeat_opt_out,omitempty"`                // per-secret override: never heartbeat this secret (audited)
-	RequireTokenApproval bool   `protobuf:"varint,22,opt,name=require_token_approval,json=requireTokenApproval,proto3" json:"require_token_approval,omitempty"` // a personal-token reveal needs the owner's per-use browser approval (or a grant with allow_reveal); set by a person only
-	LastHeartbeatDetail  string `protobuf:"bytes,23,opt,name=last_heartbeat_detail,json=lastHeartbeatDetail,proto3" json:"last_heartbeat_detail,omitempty"`     // the connector's reason for the last heartbeat result (never a value), truncated
+	BuiltinAdministrator bool `protobuf:"varint,29,opt,name=builtin_administrator,json=builtinAdministrator,proto3" json:"builtin_administrator,omitempty"`
+	AdminCount           bool `protobuf:"varint,30,opt,name=admin_count,json=adminCount,proto3" json:"admin_count,omitempty"`
+	HeartbeatOptOut      bool `protobuf:"varint,21,opt,name=heartbeat_opt_out,json=heartbeatOptOut,proto3" json:"heartbeat_opt_out,omitempty"` // per-secret override: never heartbeat this secret (audited)
+	// A personal-token reveal needs the token owner's per-use browser approval
+	// (or a grant with allow_reveal). Personal tokens only: a service account
+	// has no person to approve, so its reveals are governed by its RACI grants
+	// and allow_api_for_sensitive instead. Set by a person only.
+	RequireTokenApproval bool   `protobuf:"varint,22,opt,name=require_token_approval,json=requireTokenApproval,proto3" json:"require_token_approval,omitempty"`
+	LastHeartbeatDetail  string `protobuf:"bytes,23,opt,name=last_heartbeat_detail,json=lastHeartbeatDetail,proto3" json:"last_heartbeat_detail,omitempty"` // the connector's reason for the last heartbeat result (never a value), truncated
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -6974,8 +6994,9 @@ func (x *ListSecretVersionsResponse) GetVersions() []*SecretVersion {
 	return nil
 }
 
-// Reveal ONE field from a specific prior version; audited exactly like
-// RevealSecretField (sensitive), gated by the same reveal access.
+// Reveal ONE field from a specific version. Needs read on the secret plus the
+// recovery role (is_recovery) and an MFA within MFA_MAX_AGE, else
+// RECOVERY_ROLE_REQUIRED or STEP_UP_REQUIRED. Audited at the audit tier.
 type RevealSecretVersionFieldRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Actor         *ActorContext          `protobuf:"bytes,1,opt,name=actor,proto3" json:"actor,omitempty"`
@@ -12555,8 +12576,9 @@ func (x *GetHeartbeatStatusForPrincipalResponse) GetPending() bool {
 	return false
 }
 
-// SetSecretTokenApproval turns require_token_approval on or off. A person with
-// manage rights on the secret only; never a token or other non-human principal.
+// SetSecretTokenApproval turns require_token_approval on or off. It covers
+// personal-token reveals only, never service accounts. A person with manage
+// rights on the secret only; never a token or other non-human principal.
 type SetSecretTokenApprovalRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Actor         *ActorContext          `protobuf:"bytes,1,opt,name=actor,proto3" json:"actor,omitempty"`
@@ -13099,10 +13121,17 @@ func (x *PasswordPolicy) GetDeletable() bool {
 }
 
 type SecuritySettings struct {
-	state                          protoimpl.MessageState `protogen:"open.v1"`
-	DefaultPasswordPolicyId        string                 `protobuf:"bytes,1,opt,name=default_password_policy_id,json=defaultPasswordPolicyId,proto3" json:"default_password_policy_id,omitempty"`
-	RequireMfaForSensitiveCheckout bool                   `protobuf:"varint,3,opt,name=require_mfa_for_sensitive_checkout,json=requireMfaForSensitiveCheckout,proto3" json:"require_mfa_for_sensitive_checkout,omitempty"`
-	AllowApiForSensitive           bool                   `protobuf:"varint,4,opt,name=allow_api_for_sensitive,json=allowApiForSensitive,proto3" json:"allow_api_for_sensitive,omitempty"`
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	DefaultPasswordPolicyId string                 `protobuf:"bytes,1,opt,name=default_password_policy_id,json=defaultPasswordPolicyId,proto3" json:"default_password_policy_id,omitempty"`
+	// On (the default): checking out a secret whose type has any
+	// super-sensitive field needs an MFA within MFA_MAX_AGE, else the workflow
+	// refuses with STEP_UP_REQUIRED. Other types are unaffected.
+	RequireMfaForSensitiveCheckout bool `protobuf:"varint,3,opt,name=require_mfa_for_sensitive_checkout,json=requireMfaForSensitiveCheckout,proto3" json:"require_mfa_for_sensitive_checkout,omitempty"`
+	// Off (the default): service accounts and personal tokens can't reveal,
+	// prepare or redeem super-sensitive fields (API_SENSITIVE_DISABLED).
+	// Ordinary password and sensitive fields stay available to them. People
+	// are unaffected.
+	AllowApiForSensitive bool `protobuf:"varint,4,opt,name=allow_api_for_sensitive,json=allowApiForSensitive,proto3" json:"allow_api_for_sensitive,omitempty"`
 	// Days a resolved access request is retained before the daily purge job
 	// deletes it (and its comment thread) from the workflow DB. 0 = default (90).
 	RequestHistoryRetentionDays int32 `protobuf:"varint,5,opt,name=request_history_retention_days,json=requestHistoryRetentionDays,proto3" json:"request_history_retention_days,omitempty"`
@@ -13111,8 +13140,11 @@ type SecuritySettings struct {
 	// effective value to [900, 3600] (15m-60m).
 	SessionTtlSeconds int32 `protobuf:"varint,6,opt,name=session_ttl_seconds,json=sessionTtlSeconds,proto3" json:"session_ttl_seconds,omitempty"`
 	KekRotationDays   int32 `protobuf:"varint,7,opt,name=kek_rotation_days,json=kekRotationDays,proto3" json:"kek_rotation_days,omitempty"` // 0 = auto-rotation off; admin override of KEK_ROTATION_DAYS
-	// Global default for step-up MFA before a reveal; folders override it
-	// (Folder.reveal_step_up).
+	// Global default for step-up MFA before a person reveals or copies a
+	// sensitive field: when it applies, an MFA older than MFA_MAX_AGE is
+	// refused with STEP_UP_REQUIRED. The nearest folder that sets
+	// Folder.reveal_step_up overrides it. Machine principals are exempt
+	// (allow_api_for_sensitive covers them). Off by default.
 	RequireMfaForReveal bool `protobuf:"varint,8,opt,name=require_mfa_for_reveal,json=requireMfaForReveal,proto3" json:"require_mfa_for_reveal,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -13908,7 +13940,7 @@ const file_sneakers_vault_v1_vault_proto_rawDesc = "" +
 	"\x0eapprove_reason\x18\b \x01(\tR\rapproveReason\x12\x1a\n" +
 	"\binformed\x18\t \x01(\bR\binformed\x12'\n" +
 	"\x0finformed_reason\x18\n" +
-	" \x01(\tR\x0einformedReason\"\xbc\x02\n" +
+	" \x01(\tR\x0einformedReason\"\xe0\x02\n" +
 	"\x15SimulateFolderRequest\x125\n" +
 	"\x05actor\x18\x01 \x01(\v2\x1f.sneakers.vault.v1.ActorContextR\x05actor\x12\x1b\n" +
 	"\tfolder_id\x18\x02 \x01(\tR\bfolderId\x12\x1e\n" +
@@ -13917,9 +13949,10 @@ const file_sneakers_vault_v1_vault_proto_rawDesc = "" +
 	"\vsim_is_root\x18\x05 \x01(\bR\tsimIsRoot\x12&\n" +
 	"\x0fsim_group_names\x18\x06 \x03(\tR\rsimGroupNames\x12<\n" +
 	"\vdraft_rules\x18\a \x03(\v2\x1b.sneakers.vault.v1.RaciRuleR\n" +
-	"draftRules\"U\n" +
+	"draftRules\x12\"\n" +
+	"\rsim_group_ids\x18\b \x03(\tR\vsimGroupIds\"U\n" +
 	"\x16SimulateFolderResponse\x12;\n" +
-	"\bdecision\x18\x01 \x01(\v2\x1f.sneakers.vault.v1.RaciDecisionR\bdecision\"\xbc\x02\n" +
+	"\bdecision\x18\x01 \x01(\v2\x1f.sneakers.vault.v1.RaciDecisionR\bdecision\"\xe0\x02\n" +
 	"\x15SimulateSecretRequest\x125\n" +
 	"\x05actor\x18\x01 \x01(\v2\x1f.sneakers.vault.v1.ActorContextR\x05actor\x12\x1b\n" +
 	"\tsecret_id\x18\x02 \x01(\tR\bsecretId\x12\x1e\n" +
@@ -13928,7 +13961,8 @@ const file_sneakers_vault_v1_vault_proto_rawDesc = "" +
 	"\vsim_is_root\x18\x05 \x01(\bR\tsimIsRoot\x12&\n" +
 	"\x0fsim_group_names\x18\x06 \x03(\tR\rsimGroupNames\x12<\n" +
 	"\vdraft_rules\x18\a \x03(\v2\x1b.sneakers.vault.v1.RaciRuleR\n" +
-	"draftRules\"U\n" +
+	"draftRules\x12\"\n" +
+	"\rsim_group_ids\x18\b \x03(\tR\vsimGroupIds\"U\n" +
 	"\x16SimulateSecretResponse\x12;\n" +
 	"\bdecision\x18\x01 \x01(\v2\x1f.sneakers.vault.v1.RaciDecisionR\bdecision\"\xa3\b\n" +
 	"\x06Secret\x12\x0e\n" +
