@@ -12,7 +12,7 @@ import (
 	"net"
 	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	otel "github.com/Bugs5382/go-otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -39,15 +39,16 @@ func Run(ctx context.Context, port string, register func(*grpc.Server), opts ...
 
 	// Build the default ServerOptions, prepended before caller-supplied opts.
 	//
-	//   - StatsHandler(otelgrpc): traces every service by default. Prepended so
-	//     a caller StatsHandler (gRPC applies the last one) can still override.
+	//   - StatsHandler (go-otel's gRPC server handler): traces every service
+	//     by default. Prepended so a caller StatsHandler (gRPC applies the
+	//     last one) can still override.
 	//   - ChainUnaryInterceptor(recovery) / StreamInterceptor(recovery): make
 	//     panic recovery the OUTERMOST interceptor. grpc.ChainUnaryInterceptor
 	//     is additive across ServerOptions (v1.81.x appends, no "last wins"),
 	//     and the chain executes first-added-outermost. Prepending our
 	//     ChainUnaryInterceptor before caller opts means recovery runs before
 	//     any caller-supplied interceptor (e.g. an auth interceptor) and before the
-	//     handler, so it catches panics from all of them. The otelgrpc
+	//     handler, so it catches panics from all of them. The otel gRPC
 	//     StatsHandler still creates the server span first, so the recovery
 	//     interceptor can record the panic on a live span.
 	//
@@ -56,7 +57,7 @@ func Run(ctx context.Context, port string, register func(*grpc.Server), opts ...
 	// rather than panicking (plain grpc.StreamInterceptor allows only one and
 	// panics on a second).
 	defaults := []grpc.ServerOption{
-		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		grpc.StatsHandler(otel.GRPCServerStatsHandler()),
 		grpc.ChainUnaryInterceptor(RecoveryUnaryInterceptor()),
 		grpc.ChainStreamInterceptor(RecoveryStreamInterceptor()),
 	}
@@ -103,5 +104,5 @@ func Run(ctx context.Context, port string, register func(*grpc.Server), opts ...
 //
 //	conn, err := grpc.NewClient(target, server.ClientStatsHandler(), ...)
 func ClientStatsHandler() grpc.DialOption {
-	return grpc.WithStatsHandler(otelgrpc.NewClientHandler())
+	return grpc.WithStatsHandler(otel.GRPCClientStatsHandler())
 }
