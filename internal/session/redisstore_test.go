@@ -53,8 +53,9 @@ func refParams() Params {
 
 // TestRedisCrossReplicaRedeem is the core HA property: a ticket
 // minted on one "pod" (store instance) is redeemable on a SECOND pod sharing
-// the same Redis. Before this change the ticket lived only in the minting pod's
-// memory, so a WS landing on another pod got "invalid or expired ticket".
+// the same Redis. Without a shared store the ticket would live only in the
+// minting pod's memory, so a WS landing on another pod would get "invalid or
+// expired ticket".
 func TestRedisCrossReplicaRedeem(t *testing.T) {
 	_, newPod := newMiniRedis(t)
 	podA := newPod()

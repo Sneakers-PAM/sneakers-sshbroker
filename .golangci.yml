@@ -25,8 +25,8 @@ linters:
         linters: [gocyclo, gocognit]
       # The WebSocket handler keeps its whole session lifecycle (ticket,
       # key reveal, dial, liveness goroutines, pumps and the zeroizing
-      # teardown) in one function so the teardown order can be read in one
-      # place. It is ported as is; splitting it is tracked separately.
+      # teardown) in one function so the teardown order reads in one place;
+      # splitting it is tracked in the backlog.
       - path: 'internal/wsproxy/proxy\.go$'
         linters: [gocyclo, gocognit]
         text: 'HandlerWithConfig'

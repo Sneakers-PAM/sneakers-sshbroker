@@ -60,8 +60,9 @@ func sharedRedisPods(t *testing.T) (mint, ws *session.RedisStore) {
 // TestReferenceCrossReplicaRedeem is the end-to-end HA proof: a
 // reference ticket minted against the shared store on one "pod" is redeemed by
 // a SECOND pod's WS handler, which fetches the key from a fake vault with the
-// ticket's actor, builds the signer, dials, and echoes. Before this change the
-// key lived only in the minting pod's memory, so the second pod failed.
+// ticket's actor, builds the signer, dials, and echoes. Without the reference
+// path the key would live only in the minting pod's memory, so the second pod
+// would fail.
 func TestReferenceCrossReplicaRedeem(t *testing.T) {
 	pemPriv, pub := genClientKey(t)
 	host, port, stop := startEchoSSHServer(t, pub)

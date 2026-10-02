@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package vault fetches SSH key material from the sneakers vault at
-// SSH-connect time, on the reference path. The broker no longer receives the
-// private key from the gateway; instead it holds a reference (secret id +
+// SSH-connect time, on the reference path. On that path the broker does not
+// receive the private key from the gateway; it holds a reference (secret id +
 // actor) and reveals the key here, on the pod that will terminate the SSH
 // session, so key material is only ever resident in the vault and that one
 // pod's memory -- never in the shared ticket store.
@@ -25,8 +25,8 @@ import (
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 )
 
-// Field keys for the SSH secret type, matching what the gateway revealed on the
-// legacy inline path.
+// Field keys for the SSH secret type: the private key and its optional
+// passphrase.
 const (
 	fieldPrivateKey = "privateKey"
 	fieldPassphrase = "passphrase"
