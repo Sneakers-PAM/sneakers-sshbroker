@@ -31,9 +31,10 @@ go run ./cmd/sshbroker
 ```
 
 gRPC listens on port 9096 and HTTP (the WebSocket endpoint and `/health`) on port 9097. With no
-`REDIS_URL` the tickets stay in memory. The audit and vault services are optional for a local run:
-audit events that can't be sent are logged and dropped, and a reference ticket fails without the
-vault. [docs/configuration.md](docs/configuration.md) lists every setting.
+`REDIS_URL` the tickets stay in memory; with it, the broker is not ready until Redis answers. The
+audit and vault services are optional for a local run: audit events that can't be sent are logged
+and dropped, and a reference ticket fails without the vault.
+[docs/configuration.md](docs/configuration.md) lists every setting.
 
 Run the tests (they use an in-process Redis and an in-process SSH server with keys generated at run
 time, so nothing else is needed):

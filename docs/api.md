@@ -29,6 +29,9 @@ the key in one of two forms:
   `passphrase` field if there is one, passing `actor` through, so the vault applies its own access
   rules and audits the reveal. With `REDIS_URL` set, the ticket goes to Redis and any replica can
   redeem it.
+
+With `REDIS_URL` set and Redis not answering yet, `CreateSession` returns `Unavailable` for both
+forms.
 - **Inline**: send `private_key` (PEM) and, if it has one, `passphrase`. The ticket and the key stay
   in the memory of the replica that minted it, so the browser must reach that same replica. This
   form is kept for older callers.

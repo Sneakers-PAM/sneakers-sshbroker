@@ -32,6 +32,12 @@ const gracefulStopTimeout = 10 * time.Second
 // Optional grpc.ServerOptions (e.g. interceptors) are passed through to
 // grpc.NewServer; callers that pass none get the previous behaviour.
 func Run(ctx context.Context, port string, register func(*grpc.Server), opts ...grpc.ServerOption) error {
+	return RunWithHealth(ctx, port, health.NewServer(), register, opts...)
+}
+
+// RunWithHealth is Run with a caller-owned health server, so the caller can
+// answer NOT_SERVING until its dependencies are ready.
+func RunWithHealth(ctx context.Context, port string, hs *health.Server, register func(*grpc.Server), opts ...grpc.ServerOption) error {
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -64,7 +70,7 @@ func Run(ctx context.Context, port string, register func(*grpc.Server), opts ...
 	opts = append(defaults, opts...)
 
 	s := grpc.NewServer(opts...)
-	healthpb.RegisterHealthServer(s, health.NewServer())
+	healthpb.RegisterHealthServer(s, hs)
 	reflection.Register(s)
 	if register != nil {
 		register(s)

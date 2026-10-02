@@ -19,30 +19,38 @@ At start the service:
 
 1. reads its configuration from the environment;
 2. starts OpenTelemetry export to `OTEL_EXPORTER_OTLP_ENDPOINT`;
-3. creates the in-memory ticket store and, when `REDIS_URL` is set and Redis answers within 5
-   seconds, the shared Redis store;
+3. creates the in-memory ticket store and, when `REDIS_URL` is set, starts connecting to Redis in
+   the background (see [Replicas and Redis](#replicas-and-redis));
 4. sets up the clients for the audit service (`AUDIT_ADDR`) and the vault (`VAULT_ADDR`); both
    connect lazily, on the first call;
 5. serves HTTP on `HTTP_PORT` and gRPC on `GRPC_PORT`.
 
 A failure in step 2 or a gRPC server error is logged at fatal level and the process exits
-non-zero. Redis is best-effort: unset, malformed or unreachable at start, the broker logs one
-warning and runs with in-memory tickets only. An HTTP listener error (for example the port already
+non-zero, and so does a malformed `REDIS_URL`. With `REDIS_URL` unset the broker logs one warning
+and runs with in-memory tickets only. An HTTP listener error (for example the port already
 in use) is logged at error level, but the process keeps running with gRPC only, so watch for it.
 
 ## Health
 
-- HTTP: `GET /health` on `HTTP_PORT` answers `200 ok`.
+- HTTP: `GET /health` on `HTTP_PORT` answers `200 ok` when ready and `503 not ready` otherwise.
 - gRPC: the standard health check:
 
   ```bash
   grpcurl -plaintext localhost:9096 grpc.health.v1.Health/Check
   ```
 
-Neither checks Redis, the vault or the audit service.
+The broker is ready at once with `REDIS_URL` unset, and once Redis has answered with it set. Until
+then both checks report not ready (`NOT_SERVING` on gRPC) and `CreateSession` returns
+`Unavailable`. Neither checks the vault or the audit service, nor Redis after it first answered.
 
 ## Replicas and Redis
 
+- With `REDIS_URL` set, reference tickets go to Redis only. A broker that starts before Redis
+  answers logs `redis unreachable; not ready, retrying` on every attempt (1 second apart, doubling
+  to 30 seconds) and logs `shared redis ticket store attached; ready (HA)` once it connects. It
+  never falls back to memory, so every replica redeems every reference ticket. The chart's probes
+  use the gRPC health check, so a broker whose Redis never answers fails its startup probe and is
+  restarted.
 - With Redis, reference tickets are stored under `sneakers:sshbroker:ticket:<ticket>`, as JSON
   holding the target, the user, the secret id and the actor (never key material), with the
   ticket's time to live as the key's expiry. Redemption uses `GETDEL`, so a ticket is used once

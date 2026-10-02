@@ -29,6 +29,10 @@ type Broker struct {
 	wsBase string
 }
 
+// readiness is implemented by a ticket store that can be not ready yet (the
+// composite with Redis configured, before Redis answers).
+type readiness interface{ Ready() bool }
+
 // NewBroker constructs a Broker over the given (shared) ticket store, audit
 // emitter, and base WS URL returned to callers.
 func NewBroker(store session.TicketStore, aud *audit.Emitter, wsBase string) *Broker {
@@ -42,6 +46,9 @@ func NewBroker(store session.TicketStore, aud *audit.Emitter, wsBase string) *Br
 // private_key; secret_id + actor identify the key to reveal from the vault at
 // redeem time) and the inline form (private_key supplied for back-compat).
 func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessionRequest) (*sshbrokerv1.CreateSessionResponse, error) {
+	if r, ok := b.store.(readiness); ok && !r.Ready() {
+		return nil, status.Error(codes.Unavailable, "ticket store not ready")
+	}
 	if req.GetHost() == "" {
 		return nil, status.Error(codes.InvalidArgument, "host is required")
 	}
@@ -91,6 +98,9 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 		HostKeys: req.GetHostKeys(),
 		TTL:      ttl,
 	})
+	if ticket == "" {
+		return nil, status.Error(codes.Unavailable, "ticket store not ready")
+	}
 
 	b.audit.Start(ctx, req.GetActorUserId(), req.GetSecretId(), req.GetTargetId(), req.GetHost())
 
