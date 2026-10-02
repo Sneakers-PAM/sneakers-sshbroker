@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	log "github.com/Bugs5382/go-log"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -17,6 +18,8 @@ import (
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/safeconv"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 )
+
+var logger = log.New("sshbroker-grpc")
 
 // Broker implements sshbrokerv1.SSHBrokerServiceServer. It issues single-use
 // WS tickets backed by an in-memory session.Store; key material never
@@ -46,6 +49,15 @@ func NewBroker(store session.TicketStore, aud *audit.Emitter, wsBase string) *Br
 // private_key; secret_id + actor identify the key to reveal from the vault at
 // redeem time) and the inline form (private_key supplied for back-compat).
 func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessionRequest) (*sshbrokerv1.CreateSessionResponse, error) {
+	// Only a person in the web app starts a brokered session: never an MCP
+	// or agent token, a service account or a workload.
+	if kind := req.GetActor().GetPrincipalKind(); kind != sshbrokerv1.PrincipalKind_PRINCIPAL_KIND_HUMAN {
+		logger.Warn().Str("actor_user_id", req.GetActorUserId()).Str("principal_kind", kind.String()).
+			Str("target_id", req.GetTargetId()).Msg("session refused: principal kind not allowed")
+		b.audit.Refused(ctx, req.GetActorUserId(), req.GetSecretId(), req.GetTargetId(),
+			"principal kind not allowed", map[string]string{"principal_kind": kind.String()})
+		return nil, status.Error(codes.PermissionDenied, "brokered sessions are for people in the web app only")
+	}
 	if r, ok := b.store.(readiness); ok && !r.Ready() {
 		return nil, status.Error(codes.Unavailable, "ticket store not ready")
 	}

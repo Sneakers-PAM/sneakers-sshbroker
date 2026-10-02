@@ -68,6 +68,25 @@ func (e *Emitter) End(ctx context.Context, actorUserID, secretID, targetID strin
 	})
 }
 
+// Refused records a session.refuse audit event for a CreateSession the
+// broker turned down, with the reason and any extra attributes. Best-effort:
+// errors are logged and swallowed.
+func (e *Emitter) Refused(ctx context.Context, actorUserID, secretID, targetID, reason string, attrs map[string]string) {
+	a := map[string]string{"target_id": targetID, "reason": reason}
+	for k, v := range attrs {
+		a[k] = v
+	}
+	e.emit(ctx, &auditv1.RecordEventRequest{
+		Tier:        auditv1.Tier_TIER_AUDIT,
+		Action:      "session.refuse",
+		ActorUserId: actorUserID,
+		Subject:     secretID,
+		Sensitive:   true,
+		Attributes:  a,
+		OccurredAt:  time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 func (e *Emitter) emit(ctx context.Context, req *auditv1.RecordEventRequest) {
 	if e == nil || e.client == nil {
 		return

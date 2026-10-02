@@ -24,17 +24,80 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// PrincipalKind mirrors sneakers.vault.v1.PrincipalKind (same names and
+// numbers). Only a person in the web app starts a brokered session, so the
+// broker refuses every kind but PRINCIPAL_KIND_HUMAN. The zero value is HUMAN
+// because an ActorContext from a caller that predates this field must still
+// decode as a human.
+// buf:lint:ignore ENUM_ZERO_VALUE_SUFFIX
+type PrincipalKind int32
+
+const (
+	PrincipalKind_PRINCIPAL_KIND_HUMAN           PrincipalKind = 0
+	PrincipalKind_PRINCIPAL_KIND_SERVICE_ACCOUNT PrincipalKind = 1
+	PrincipalKind_PRINCIPAL_KIND_WORKLOAD        PrincipalKind = 2
+	// A human's personal token (MCP or agent use).
+	PrincipalKind_PRINCIPAL_KIND_USER_TOKEN PrincipalKind = 3
+)
+
+// Enum value maps for PrincipalKind.
+var (
+	PrincipalKind_name = map[int32]string{
+		0: "PRINCIPAL_KIND_HUMAN",
+		1: "PRINCIPAL_KIND_SERVICE_ACCOUNT",
+		2: "PRINCIPAL_KIND_WORKLOAD",
+		3: "PRINCIPAL_KIND_USER_TOKEN",
+	}
+	PrincipalKind_value = map[string]int32{
+		"PRINCIPAL_KIND_HUMAN":           0,
+		"PRINCIPAL_KIND_SERVICE_ACCOUNT": 1,
+		"PRINCIPAL_KIND_WORKLOAD":        2,
+		"PRINCIPAL_KIND_USER_TOKEN":      3,
+	}
+)
+
+func (x PrincipalKind) Enum() *PrincipalKind {
+	p := new(PrincipalKind)
+	*p = x
+	return p
+}
+
+func (x PrincipalKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PrincipalKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_sneakers_sshbroker_v1_sshbroker_proto_enumTypes[0].Descriptor()
+}
+
+func (PrincipalKind) Type() protoreflect.EnumType {
+	return &file_sneakers_sshbroker_v1_sshbroker_proto_enumTypes[0]
+}
+
+func (x PrincipalKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PrincipalKind.Descriptor instead.
+func (PrincipalKind) EnumDescriptor() ([]byte, []int) {
+	return file_sneakers_sshbroker_v1_sshbroker_proto_rawDescGZIP(), []int{0}
+}
+
 // ActorContext identifies the human actor a session is opened for. It mirrors
 // sneakers.vault.v1.ActorContext so the broker can pass it straight through to
 // the vault when fetching key material by reference; the vault enforces the
 // same RBAC it would have applied to the gateway, and records the audited
 // reveal. Used only on the reference path.
 type ActorContext struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                   // set by the gateway from the session
-	IsSiteAdmin   bool                   `protobuf:"varint,2,opt,name=is_site_admin,json=isSiteAdmin,proto3" json:"is_site_admin,omitempty"` // gateway-resolved from identity (roles)
-	IsRoot        bool                   `protobuf:"varint,3,opt,name=is_root,json=isRoot,proto3" json:"is_root,omitempty"`                  // bootstrap super-admin
-	GroupNames    []string               `protobuf:"bytes,4,rep,name=group_names,json=groupNames,proto3" json:"group_names,omitempty"`       // gateway-resolved directory group memberships
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	UserId      string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                   // set by the gateway from the session
+	IsSiteAdmin bool                   `protobuf:"varint,2,opt,name=is_site_admin,json=isSiteAdmin,proto3" json:"is_site_admin,omitempty"` // gateway-resolved from identity (roles)
+	IsRoot      bool                   `protobuf:"varint,3,opt,name=is_root,json=isRoot,proto3" json:"is_root,omitempty"`                  // bootstrap super-admin
+	GroupNames  []string               `protobuf:"bytes,4,rep,name=group_names,json=groupNames,proto3" json:"group_names,omitempty"`       // gateway-resolved directory group memberships
+	// The kind of principal the gateway authenticated, as in
+	// sneakers.vault.v1.ActorContext.principal_kind (same field number). Any
+	// kind but HUMAN is refused with PermissionDenied, on both paths.
+	PrincipalKind PrincipalKind `protobuf:"varint,6,opt,name=principal_kind,json=principalKind,proto3,enum=sneakers.sshbroker.v1.PrincipalKind" json:"principal_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -95,6 +158,13 @@ func (x *ActorContext) GetGroupNames() []string {
 		return x.GroupNames
 	}
 	return nil
+}
+
+func (x *ActorContext) GetPrincipalKind() PrincipalKind {
+	if x != nil {
+		return x.PrincipalKind
+	}
+	return PrincipalKind_PRINCIPAL_KIND_HUMAN
 }
 
 type CreateSessionRequest struct {
@@ -305,13 +375,14 @@ var File_sneakers_sshbroker_v1_sshbroker_proto protoreflect.FileDescriptor
 
 const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
 	"\n" +
-	"%sneakers/sshbroker/v1/sshbroker.proto\x12\x15sneakers.sshbroker.v1\"\x85\x01\n" +
+	"%sneakers/sshbroker/v1/sshbroker.proto\x12\x15sneakers.sshbroker.v1\"\xd2\x01\n" +
 	"\fActorContext\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\"\n" +
 	"\ris_site_admin\x18\x02 \x01(\bR\visSiteAdmin\x12\x17\n" +
 	"\ais_root\x18\x03 \x01(\bR\x06isRoot\x12\x1f\n" +
 	"\vgroup_names\x18\x04 \x03(\tR\n" +
-	"groupNames\"\xf2\x02\n" +
+	"groupNames\x12K\n" +
+	"\x0eprincipal_kind\x18\x06 \x01(\x0e2$.sneakers.sshbroker.v1.PrincipalKindR\rprincipalKind\"\xf2\x02\n" +
 	"\x14CreateSessionRequest\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1a\n" +
@@ -334,7 +405,12 @@ const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
 	"\x06ticket\x18\x02 \x01(\tR\x06ticket\x12\x15\n" +
 	"\x06ws_url\x18\x03 \x01(\tR\x05wsUrl\x12,\n" +
-	"\x12expires_in_seconds\x18\x04 \x01(\x05R\x10expiresInSeconds2~\n" +
+	"\x12expires_in_seconds\x18\x04 \x01(\x05R\x10expiresInSeconds*\x89\x01\n" +
+	"\rPrincipalKind\x12\x18\n" +
+	"\x14PRINCIPAL_KIND_HUMAN\x10\x00\x12\"\n" +
+	"\x1ePRINCIPAL_KIND_SERVICE_ACCOUNT\x10\x01\x12\x1b\n" +
+	"\x17PRINCIPAL_KIND_WORKLOAD\x10\x02\x12\x1d\n" +
+	"\x19PRINCIPAL_KIND_USER_TOKEN\x10\x032~\n" +
 	"\x10SSHBrokerService\x12j\n" +
 	"\rCreateSession\x12+.sneakers.sshbroker.v1.CreateSessionRequest\x1a,.sneakers.sshbroker.v1.CreateSessionResponseBUZSgithub.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1;sshbrokerv1b\x06proto3"
 
@@ -350,21 +426,24 @@ func file_sneakers_sshbroker_v1_sshbroker_proto_rawDescGZIP() []byte {
 	return file_sneakers_sshbroker_v1_sshbroker_proto_rawDescData
 }
 
+var file_sneakers_sshbroker_v1_sshbroker_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_sneakers_sshbroker_v1_sshbroker_proto_goTypes = []any{
-	(*ActorContext)(nil),          // 0: sneakers.sshbroker.v1.ActorContext
-	(*CreateSessionRequest)(nil),  // 1: sneakers.sshbroker.v1.CreateSessionRequest
-	(*CreateSessionResponse)(nil), // 2: sneakers.sshbroker.v1.CreateSessionResponse
+	(PrincipalKind)(0),            // 0: sneakers.sshbroker.v1.PrincipalKind
+	(*ActorContext)(nil),          // 1: sneakers.sshbroker.v1.ActorContext
+	(*CreateSessionRequest)(nil),  // 2: sneakers.sshbroker.v1.CreateSessionRequest
+	(*CreateSessionResponse)(nil), // 3: sneakers.sshbroker.v1.CreateSessionResponse
 }
 var file_sneakers_sshbroker_v1_sshbroker_proto_depIdxs = []int32{
-	0, // 0: sneakers.sshbroker.v1.CreateSessionRequest.actor:type_name -> sneakers.sshbroker.v1.ActorContext
-	1, // 1: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:input_type -> sneakers.sshbroker.v1.CreateSessionRequest
-	2, // 2: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:output_type -> sneakers.sshbroker.v1.CreateSessionResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	0, // 0: sneakers.sshbroker.v1.ActorContext.principal_kind:type_name -> sneakers.sshbroker.v1.PrincipalKind
+	1, // 1: sneakers.sshbroker.v1.CreateSessionRequest.actor:type_name -> sneakers.sshbroker.v1.ActorContext
+	2, // 2: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:input_type -> sneakers.sshbroker.v1.CreateSessionRequest
+	3, // 3: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:output_type -> sneakers.sshbroker.v1.CreateSessionResponse
+	3, // [3:4] is the sub-list for method output_type
+	2, // [2:3] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_sneakers_sshbroker_v1_sshbroker_proto_init() }
@@ -377,13 +456,14 @@ func file_sneakers_sshbroker_v1_sshbroker_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc), len(file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_sneakers_sshbroker_v1_sshbroker_proto_goTypes,
 		DependencyIndexes: file_sneakers_sshbroker_v1_sshbroker_proto_depIdxs,
+		EnumInfos:         file_sneakers_sshbroker_v1_sshbroker_proto_enumTypes,
 		MessageInfos:      file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes,
 	}.Build()
 	File_sneakers_sshbroker_v1_sshbroker_proto = out.File

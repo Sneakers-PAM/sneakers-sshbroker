@@ -41,6 +41,12 @@ authorized_keys form, as the vault returns them in `Target.ssh_host_keys`. They 
 ticket (the Redis copy too; they are public keys). An entry that doesn't parse, or carries options,
 returns `InvalidArgument`. An empty list is accepted here, and the connection is then refused.
 
+Only a person in the web app starts a brokered session. `actor.principal_kind` (the same values
+as the vault's `PrincipalKind`) is `PRINCIPAL_KIND_HUMAN` when unset; any other kind
+(`PRINCIPAL_KIND_USER_TOKEN` for an MCP or agent token, `PRINCIPAL_KIND_SERVICE_ACCOUNT` or
+`PRINCIPAL_KIND_WORKLOAD`) returns `PermissionDenied` on both forms, mints no ticket and sends a
+`session.refuse` audit event. The gateway sets the kind from the principal it authenticated.
+
 A missing field returns `InvalidArgument`. `port` 0 means port 0 is dialled, so callers should
 send the target's port (22 for most targets). `ttl_seconds` 0 or less means 30 seconds.
 
@@ -93,13 +99,14 @@ audit event is then sent with the duration and the reason.
 
 ## Audit events
 
-Both events go to the audit service's `RecordEvent` at the audit tier, marked sensitive, with the
+The events go to the audit service's `RecordEvent` at the audit tier, marked sensitive, with the
 actor and the secret id as the subject. They are best-effort: a failed send is logged and the
 session carries on. No key material is ever put in an event.
 
 | Action | When | Attributes |
 |---|---|---|
 | `session.start` | `CreateSession` | `host`, `target_id` |
+| `session.refuse` | `CreateSession` refused for its principal kind | `target_id`, `reason`, `principal_kind` |
 | `session.end` | the session ends, or fails at any point after its ticket was consumed (a host-key refusal included, with its reason) | `target_id`, `duration_ms`, `reason` |
 
 ## Calling other services
