@@ -17,3 +17,7 @@ jobs:
   checks:
     if: github.event.pull_request.draft != true
     uses: Sneakers-PAM/.github/.github/workflows/scrub.yml@main
+    with:
+      # gonum.org: a public Go module host that appears in go.sum.
+      allowed-domains: >-
+        gonum.org

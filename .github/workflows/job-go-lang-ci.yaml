@@ -9,6 +9,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 permissions:
   contents: read
+env:
+  BUF_VERSION: v1.70.0
+  PROTOC_GEN_GO_VERSION: v1.36.11
+  PROTOC_GEN_GO_GRPC_VERSION: v1.6.2
 jobs:
   build-test:
     name: 🧪 Build & Test
@@ -24,16 +28,43 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # go install checks each module against the Go checksum database.
+      - name: Install buf and the protoc plugins
+        run: |
+          go install "github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}"
+          go install "google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}"
+          go install "google.golang.org/grpc/cmd/protoc-gen-go-grpc@${PROTOC_GEN_GO_GRPC_VERSION}"
+      - name: buf lint
+        run: buf lint
+      - name: buf breaking
+        run: |
+          if git cat-file -e origin/main:proto 2>/dev/null; then
+            git worktree add -q --detach "$RUNNER_TEMP/base" origin/main
+            buf breaking --against "$RUNNER_TEMP/base"
+          else
+            echo "main has no proto yet; nothing to compare against"
+          fi
+      - name: Generated code is current
+        run: |
+          buf generate
+          git diff --exit-code -- gen
+          test -z "$(git status --porcelain -- gen)"
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
             echo "gofmt needed on:"; echo "$unformatted"; exit 1
           fi
+      - name: go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
       - name: Build
         run: go build ./...
+      - name: Vet
+        run: go vet ./...
       - name: Test
-        run: go test ./... -cover
+        run: go test -count=1 ./... -cover
   lint:
     name: 🧹 GolangCI
     if: github.event.pull_request.draft == false
