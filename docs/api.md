@@ -13,9 +13,21 @@ their own client stubs from that proto, the way the broker calls the vault and a
 The server also registers the standard gRPC health service (`grpc.health.v1.Health`) and server
 reflection.
 
-The broker enforces no caller authorization itself: any caller that reaches the gRPC port can mint
-a ticket. Only the gateway is meant to call it, after it has authorized the user; run the broker
-where only the gateway reaches its gRPC port.
+### Callers
+
+Every call is authenticated with the caller's Kubernetes workload identity (the shared
+`internal/workloadauth` package; see [Workload authentication](#workload-authentication)), then
+checked against the allow-list in `internal/grpcsvc/callers.go`:
+
+| Method | Caller | Access |
+|---|---|---|
+| `CreateSession` | gateway (`<namespace>/sneakers-gateway`) | on behalf: it passes the signed-in user's actor, which the broker forwards to the vault |
+
+No other service may call the broker, and the MCP server never may. A missing or rejected token
+returns `Unauthenticated`, a caller that isn't listed returns `PermissionDenied`, and a verifier
+with no key set loaded yet returns `Unavailable`. Each refusal is logged and sent to the audit
+service as `session.refuse`, with `reason`, `caller`, `method` and `code`. The health service needs
+no token.
 
 ### CreateSession
 
@@ -106,8 +118,20 @@ session carries on. No key material is ever put in an event.
 | Action | When | Attributes |
 |---|---|---|
 | `session.start` | `CreateSession` | `host`, `target_id` |
-| `session.refuse` | `CreateSession` refused for its principal kind | `target_id`, `reason`, `principal_kind` |
+| `session.refuse` | `CreateSession` refused for its principal kind, or any call refused by the caller check | `target_id`, `reason`, and `principal_kind`, or `caller`, `method` and `code` |
 | `session.end` | the session ends, or fails at any point after its ticket was consumed (a host-key refusal included, with its reason) | `target_id`, `duration_ms`, `reason` |
+
+## Workload authentication
+
+The broker's calls to the vault and audit carry its own workload token: the projected
+service-account token (audience `sneakers`) named by `WORKLOAD_TOKEN_FILE`, sent as
+`authorization: Bearer <token>` and read again on every call. The vault lists the broker as an
+on-behalf caller of `RevealSecretField` only.
+
+`internal/workloadauth` is a byte-for-byte copy of the package in `Sneakers-PAM/sneakers-vault`
+at `SNEAKERS_VAULT_REF`. Build & Test runs `scripts/workloadauth-check.sh`, which fails when the
+copy differs. To take a new version, bump the ref and copy the vault's `internal/workloadauth/`
+over this one in the same change. Never edit the copy here.
 
 ## Calling other services
 

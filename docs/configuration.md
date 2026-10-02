@@ -18,6 +18,22 @@ The service reads its configuration from the environment. Every setting has a de
 Local development logs at `trace` in `console` format (see `.env.example`). Cluster environments
 log JSON, at `debug` in a dev cluster, `info` in QA or staging and `error` in production.
 
+## Workload authentication
+
+The gRPC API takes calls only from authenticated workloads (see [API](api.md#callers)). The
+settings are those of the shared `internal/workloadauth` package:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WORKLOAD_OIDC_ISSUER` | unset | The cluster's service-account issuer (`https://`); a token's `iss` must equal it. Required unless `WORKLOAD_AUTH=disabled`: with neither set, the start fails. |
+| `WORKLOAD_OIDC_JWKS_URL` | discovered | The JWKS URL (`https://`). Unset, it's read from `<issuer>/.well-known/openid-configuration`. |
+| `WORKLOAD_OIDC_CA_FILE` | system roots | Extra PEM CA bundle for the discovery and JWKS fetch, such as the cluster CA. |
+| `WORKLOAD_OIDC_BEARER_FILE` | unset | Token sent on the discovery and JWKS fetch, read again on every fetch. |
+| `WORKLOAD_AUDIENCE` | `sneakers` | The token's `aud` must contain it. |
+| `WORKLOAD_ALLOWED_SERVICEACCOUNTS` | unset | Comma list of `<namespace>/<serviceaccount>` that may present a token at all. For the broker: `<namespace>/sneakers-gateway`. Required with the issuer. |
+| `WORKLOAD_AUTH` | unset | `disabled` turns the check off and trusts every caller, with a warning every 5 minutes. Local development only; no other value is accepted, and it can't be set together with the issuer. |
+| `WORKLOAD_TOKEN_FILE` | unset | The broker's own projected token (`/var/run/secrets/sneakers/token` in the charts), sent on its calls to the vault and audit and read again on every call. Unset, those calls carry no token. A set path that can't be read stops the start. |
+
 ## Fixed limits
 
 These are constants in the code, not settings:

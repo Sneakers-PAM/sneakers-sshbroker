@@ -18,9 +18,10 @@ over the socket until either side closes.
 - 📜 **Audited:** session start and end are sent to the audit service.
 - 🔐 **Pinned host keys:** the broker connects only to a host that presents one of the target's pinned SSH host keys, and refuses unpinned targets.
 
+- 🪪 **Gateway only:** every gRPC call carries the caller's Kubernetes workload identity, and only the gateway may create a session.
+
 ## ⚠️ Before production
 
-One gap is open: the gRPC API has no caller authorization of its own.
 Read [docs/runbook.md](docs/runbook.md) before you deploy it.
 
 ## 🚀 Run it

@@ -9,9 +9,13 @@
   `SSHBROKER_ALLOWED_ORIGINS`, which defaults to the origin of `SSHBROKER_PUBLIC_WS_URL` (the UI
   on the same host). Set it when the web app is served from another origin. Serve the endpoint
   through an ingress that terminates TLS (`wss://`).
-- **No caller authorization on gRPC.** Anyone who reaches the gRPC port can mint a ticket for any
-  host, user and key reference (the vault still checks the actor on a reference reveal). Expose the
-  gRPC port to the gateway only, for example with a network policy.
+- **Workload authentication on gRPC.** Set `WORKLOAD_OIDC_ISSUER` and
+  `WORKLOAD_ALLOWED_SERVICEACCOUNTS=<namespace>/sneakers-gateway` (see
+  [configuration](configuration.md#workload-authentication)); the broker won't start without them
+  unless `WORKLOAD_AUTH=disabled`, which is for local development only. Only the gateway may
+  create a session. Mount the broker's own projected token and set `WORKLOAD_TOKEN_FILE` so the
+  vault and audit accept its calls. Keep a network policy that lets only the gateway reach the
+  gRPC port as well.
 - **Plaintext gRPC** to the vault, the audit service and the OTLP collector. Keep those hops on a
   private network or behind a service mesh with mTLS.
 
@@ -23,12 +27,17 @@ At start the service:
 2. starts OpenTelemetry export to `OTEL_EXPORTER_OTLP_ENDPOINT`;
 3. creates the in-memory ticket store and, when `REDIS_URL` is set, starts connecting to Redis in
    the background (see [Replicas and Redis](#replicas-and-redis));
-4. sets up the clients for the audit service (`AUDIT_ADDR`) and the vault (`VAULT_ADDR`); both
-   connect lazily, on the first call;
-5. serves HTTP on `HTTP_PORT` and gRPC on `GRPC_PORT`.
+4. sets up the clients for the audit service (`AUDIT_ADDR`) and the vault (`VAULT_ADDR`), with
+   the workload token from `WORKLOAD_TOKEN_FILE` when it's set; both connect lazily, on the first
+   call;
+5. reads the workload authentication settings and starts loading the issuer's keys in the
+   background (until they load, gRPC calls other than health get `Unavailable`);
+6. serves HTTP on `HTTP_PORT` and gRPC on `GRPC_PORT`.
 
 A failure in step 2 or a gRPC server error is logged at fatal level and the process exits
-non-zero, and so does a malformed `REDIS_URL`. With `REDIS_URL` unset the broker logs one warning
+non-zero, and so does a malformed `REDIS_URL`, a malformed or missing workload authentication
+setting (no `WORKLOAD_OIDC_ISSUER` without `WORKLOAD_AUTH=disabled`), or an unreadable
+`WORKLOAD_TOKEN_FILE`. With `REDIS_URL` unset the broker logs one warning
 and runs with in-memory tickets only. An HTTP listener error (for example the port already
 in use) is logged at error level, but the process keeps running with gRPC only, so watch for it.
 
