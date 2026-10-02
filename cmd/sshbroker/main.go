@@ -91,6 +91,25 @@ func newTicketStore(ctx context.Context, local *session.Store, onReady func()) *
 	return store
 }
 
+// allowedOrigins reads SSHBROKER_ALLOWED_ORIGINS, or when it's unset, the
+// origin of the public WebSocket URL (the UI served from the same host). A
+// malformed value stops the start.
+func allowedOrigins(wsBase string) []string {
+	logger := log.New(serviceName)
+	if raw := os.Getenv("SSHBROKER_ALLOWED_ORIGINS"); raw != "" {
+		origins, err := wsproxy.ParseOrigins(raw)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("SSHBROKER_ALLOWED_ORIGINS invalid")
+		}
+		return origins
+	}
+	origin, err := wsproxy.OriginFromWSURL(wsBase)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("SSHBROKER_ALLOWED_ORIGINS unset and SSHBROKER_PUBLIC_WS_URL has no usable origin")
+	}
+	return []string{origin}
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -149,6 +168,8 @@ func main() {
 	keyFetcher := vault.New(vaultv1.NewVaultServiceClient(vaultConn))
 
 	wsBase := env("SSHBROKER_PUBLIC_WS_URL", "ws://localhost:9097/ssh/session")
+	origins := allowedOrigins(wsBase)
+	logger.Info().Strs("origins", origins).Msg("websocket origins allowed")
 
 	// HTTP server: health check plus the WS session endpoint, sharing the
 	// same store instance as the gRPC CreateSession call.
@@ -159,7 +180,7 @@ func main() {
 	// WITHOUT stripping the prefix delivers a browser connecting to
 	// SSHBROKER_PUBLIC_WS_URL (…/proto/ssh/session) here as
 	// /proto/ssh/session; register both so either edge works.
-	wsHandler := wsproxy.Handler(store, auditEmitter, keyFetcher)
+	wsHandler := wsproxy.HandlerWithConfig(store, auditEmitter, keyFetcher, wsproxy.Config{AllowedOrigins: origins})
 	mux.HandleFunc("/ssh/session", wsHandler)
 	mux.HandleFunc("/proto/ssh/session", wsHandler)
 	httpSrv := &http.Server{Addr: ":" + httpPort, Handler: mux, ReadHeaderTimeout: 5 * time.Second}

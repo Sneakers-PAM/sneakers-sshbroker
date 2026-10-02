@@ -76,6 +76,9 @@ type Config struct {
 	SSHKeepaliveInterval time.Duration
 	// MaxSessionDuration is the absolute session lifetime cutoff.
 	MaxSessionDuration time.Duration
+	// AllowedOrigins are the browser origins (normalized, see ParseOrigins)
+	// that may open a session. Empty refuses every browser origin.
+	AllowedOrigins []string
 }
 
 func (c Config) withDefaults() Config {
@@ -95,13 +98,6 @@ func (c Config) withDefaults() Config {
 		c.MaxSessionDuration = defaultMaxSessionDuration
 	}
 	return c
-}
-
-var upgrader = websocket.Upgrader{
-	// The browser connects cross-origin (served by the UI, WS to the broker).
-	// The single-use ticket is the auth; a permissive check is acceptable for
-	// dev. TODO(prod): restrict CheckOrigin to the known UI origin(s).
-	CheckOrigin: func(_ *http.Request) bool { return true },
 }
 
 // resizeMsg is the only text control frame the client may send: a terminal
@@ -151,8 +147,17 @@ func Handler(store session.TicketStore, aud *audit.Emitter, keys KeyFetcher) htt
 // none outlives the handler.
 func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFetcher, cfg Config) http.HandlerFunc {
 	cfg = cfg.withDefaults()
+	origins := newOriginChecker(cfg.AllowedOrigins)
+	upgrader := &websocket.Upgrader{CheckOrigin: origins.allowed}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Checked before the ticket is consumed, so a page on another origin
+		// can't burn a ticket the real UI is about to use.
+		if !origins.allowed(r) {
+			logger.Warn().Str("origin", r.Header.Get("Origin")).Msg("ssh session rejected: origin not allowed")
+			http.Error(w, "origin not allowed", http.StatusForbidden)
+			return
+		}
 		ticket := r.URL.Query().Get("ticket")
 		sess, ok := store.Consume(ticket)
 		if !ok {
@@ -217,7 +222,7 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 			if msg, ok := hostKeyRefusal(err); ok {
 				reason = msg
 				logFailure(sess, reason, err)
-				refuse(w, r, cfg, msg)
+				refuse(w, r, upgrader, cfg, msg)
 				return
 			}
 			reason = "ssh dial failed"
@@ -514,7 +519,7 @@ func hostKeyRefusal(err error) (string, bool) {
 // the body of a failed WebSocket handshake, so a WebSocket client gets the
 // upgrade and then a policy-violation close frame carrying msg; any other
 // client gets msg as a 502 body.
-func refuse(w http.ResponseWriter, r *http.Request, cfg Config, msg string) {
+func refuse(w http.ResponseWriter, r *http.Request, upgrader *websocket.Upgrader, cfg Config, msg string) {
 	if !websocket.IsWebSocketUpgrade(r) {
 		http.Error(w, msg, http.StatusBadGateway)
 		return

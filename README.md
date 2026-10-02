@@ -20,8 +20,7 @@ over the socket until either side closes.
 
 ## ⚠️ Before production
 
-One gap is open: the WebSocket endpoint accepts any origin (the ticket is the only check). The
-gRPC API has no caller authorization of its own.
+One gap is open: the gRPC API has no caller authorization of its own.
 Read [docs/runbook.md](docs/runbook.md) before you deploy it.
 
 ## 🚀 Run it
