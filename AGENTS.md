@@ -74,3 +74,10 @@ Follow the logging rules in `CLAUDE.md`. In short:
   service's Go module.
 - The lint config exempts `HandlerWithConfig` in `internal/wsproxy` from the complexity linters; if
   you split it, keep the teardown (zeroize, remove from the store, audit) on every exit path.
+- `go.mod` holds tagged releases only: no `replace` directive, and no pseudo-version (`@main`,
+  `@<sha>`) of a `github.com/Bugs5382/*` or `github.com/Sneakers-PAM/*` module; the
+  `proto-sync / check` job fails on either. To compile and test against a local package checkout,
+  use a git-ignored `go.work` beside `go.mod` (`go work init . ../go-<pkg>`, which writes
+  `use . ../go-<pkg>`); `go.work` and `go.work.sum` are in `.gitignore`. For local callee protos,
+  point `SNEAKERS_AUDIT_PROTO_DIR` and `SNEAKERS_VAULT_PROTO_DIR` at a local `proto/` directory when
+  running `scripts/proto-generate.sh`, rather than editing a pin in `proto-refs.env`.
