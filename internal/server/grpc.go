@@ -64,7 +64,7 @@ func RunWithHealth(ctx context.Context, port string, hs *health.Server, register
 	// panics on a second).
 	defaults := []grpc.ServerOption{
 		grpc.StatsHandler(otel.GRPCServerStatsHandler()),
-		grpc.ChainUnaryInterceptor(RecoveryUnaryInterceptor()),
+		grpc.ChainUnaryInterceptor(RecoveryUnaryInterceptor(), VersionUnaryInterceptor()),
 		grpc.ChainStreamInterceptor(RecoveryStreamInterceptor()),
 	}
 	opts = append(defaults, opts...)
