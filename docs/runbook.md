@@ -43,8 +43,8 @@ in use) is logged at error level, but the process keeps running with gRPC only, 
 
 ## Health
 
-- HTTP on `HTTP_PORT`: `GET /readyz` (200 or 503, with the readiness report as JSON),
-  `GET /livez` (always 200) and `GET /health` (`200 ok` or `503 not ready`, from the readiness).
+- HTTP on `HTTP_PORT`: `GET /readyz` (200 or 503, with the readiness report and the build as
+  JSON) and `GET /livez` (always 200).
 - gRPC: the standard health check; service `""` is readiness and service `liveness` is the
   process only:
 
@@ -68,12 +68,13 @@ that is set in the sneakers-release chart.
 
 Read the report with `grpcurl -v -plaintext localhost:9096 grpc.health.v1.Health/Check` (the
 `sneakers-health` header) or `curl localhost:9097/readyz`. Each change of a dependency's state is
-logged once: `health: dependency down` or `degraded` at warn, `health: dependency recovered` at
-info, with the dependency's name and error class.
+logged once: `dependency check failing` at warn (with the state it moved to), `dependency
+recovered` at info, with the dependency's name and error class.
 
 To see which build is running, ask for the response headers (`grpcurl -v ... grpc.health.v1.Health/Check`):
-the answer carries `sneakers-version` and `sneakers-commit`. The image build stamps them from its
-`VERSION` and `COMMIT` build arguments:
+the answer carries `sneakers-version` and `sneakers-commit` (so do `/readyz` and `/livez`). The
+image build stamps them from its `VERSION` and `COMMIT` build arguments, into go-buildinfo's
+`Version` and `Commit`:
 
 ```bash
 docker build --build-arg VERSION=v0.1.0 --build-arg COMMIT="$(git rev-parse HEAD)" .

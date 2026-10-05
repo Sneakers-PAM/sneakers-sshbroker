@@ -8,13 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Bugs5382/go-buildinfo/health"
 	log "github.com/Bugs5382/go-log"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -23,19 +22,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type testClock struct {
-	mu sync.Mutex
-	t  time.Time
+// testTTL is the cache window the tests run with; waiting it out lets the next
+// check run again.
+const testTTL = time.Second
+
+func newTestChecker(t *testing.T, deps ...health.Dependency) *health.Checker {
+	t.Helper()
+	c, err := NewChecker(log.Nop(), deps, health.WithTTL(testTTL))
+	if err != nil {
+		t.Fatalf("checker: %v", err)
+	}
+	return c
 }
 
-func (c *testClock) now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
-func (c *testClock) add(d time.Duration) {
-	c.mu.Lock()
-	c.t = c.t.Add(d)
-	c.mu.Unlock()
-}
-
-// startWithHealth runs the server with checker and returns a health client.
 func startWithHealth(t *testing.T, checker *health.Checker) healthpb.HealthClient {
 	t.Helper()
 	port := freePort(t)
@@ -74,17 +73,16 @@ func healthHeader(t *testing.T, md metadata.MD) health.Report {
 }
 
 func TestHealth_ReadinessFollowsARequiredDependency(t *testing.T) {
-	clk := &testClock{t: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)}
 	var valkeyDown atomic.Bool
-	checker := health.New(log.Nop(), []health.Dep{
-		{Name: "valkey", Required: true, Check: func(context.Context) error {
+	checker := newTestChecker(t,
+		health.Dependency{Name: "valkey", Required: true, Check: func(context.Context) error {
 			if valkeyDown.Load() {
 				return errors.New("dial tcp valkey.example.test:6379: auth hunter2-secret")
 			}
 			return nil
 		}},
-		{Name: "audit", Check: func(context.Context) error { return nil }},
-	}, health.WithClock(clk.now))
+		health.Dependency{Name: "audit", Check: func(context.Context) error { return nil }},
+	)
 	hc := startWithHealth(t, checker)
 
 	st, md, err := check(t, hc, "")
@@ -92,12 +90,12 @@ func TestHealth_ReadinessFollowsARequiredDependency(t *testing.T) {
 		t.Fatalf("ready: %v %v", st, err)
 	}
 	r := healthHeader(t, md)
-	if r.Status != health.OK || len(r.Dependencies) != 2 || !r.Dependencies[0].Required || r.Dependencies[1].Required {
+	if r.Status != health.StateOK || len(r.Dependencies) != 2 || !r.Dependencies[0].Required || r.Dependencies[1].Required {
 		t.Fatalf("header: %+v", r)
 	}
 
 	valkeyDown.Store(true)
-	clk.add(health.CacheTTL)
+	time.Sleep(testTTL)
 	st, md, err = check(t, hc, "")
 	if err != nil || st != healthpb.HealthCheckResponse_NOT_SERVING {
 		t.Fatalf("valkey down: readiness %v %v, want NOT_SERVING", st, err)
@@ -105,7 +103,7 @@ func TestHealth_ReadinessFollowsARequiredDependency(t *testing.T) {
 	if raw := strings.Join(md.Get(HeaderHealth), ""); strings.Contains(raw, "hunter2") || strings.Contains(raw, "valkey.example.test") {
 		t.Fatalf("header leaks the error: %s", raw)
 	}
-	if r := healthHeader(t, md); r.Status != health.Down || r.Dependencies[0].State != health.Down || r.Dependencies[0].Error != "error" {
+	if r := healthHeader(t, md); r.Status != health.StateDown || r.Dependencies[0].State != health.StateDown || r.Dependencies[0].Error != "error" {
 		t.Fatalf("header: %+v", r)
 	}
 	if st, md, err := check(t, hc, LivenessService); err != nil || st != healthpb.HealthCheckResponse_SERVING || len(md.Get(HeaderHealth)) != 0 {
@@ -116,21 +114,21 @@ func TestHealth_ReadinessFollowsARequiredDependency(t *testing.T) {
 	if st, _, _ := check(t, hc, ""); st != healthpb.HealthCheckResponse_NOT_SERVING {
 		t.Fatalf("inside the cache window: %v, want NOT_SERVING still", st)
 	}
-	clk.add(health.CacheTTL)
+	time.Sleep(testTTL)
 	if st, _, err := check(t, hc, ""); err != nil || st != healthpb.HealthCheckResponse_SERVING {
 		t.Fatalf("recovered: %v %v", st, err)
 	}
 }
 
 func TestHealth_OptionalDependencyDegradesButStaysServing(t *testing.T) {
-	checker := health.New(log.Nop(), []health.Dep{
-		{Name: "audit", Check: func(context.Context) error { return status.Error(codes.Unavailable, "down") }},
-	})
+	checker := newTestChecker(t,
+		health.Dependency{Name: "audit", Check: func(context.Context) error { return status.Error(codes.Unavailable, "down") }},
+	)
 	st, md, err := check(t, startWithHealth(t, checker), "")
 	if err != nil || st != healthpb.HealthCheckResponse_SERVING {
 		t.Fatalf("%v %v", st, err)
 	}
-	if r := healthHeader(t, md); r.Status != health.Degraded || r.Dependencies[0].State != health.Degraded || r.Dependencies[0].Error != "unavailable" {
+	if r := healthHeader(t, md); r.Status != health.StateDegraded || r.Dependencies[0].State != health.StateDegraded || r.Dependencies[0].Error != "unavailable" {
 		t.Fatalf("%+v", r)
 	}
 }
@@ -143,13 +141,13 @@ func TestHealth_UnknownServiceAndWatch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	w, err := hc.Watch(ctx, &healthpb.HealthCheckRequest{})
-	if err == nil {
-		_, err = w.Recv()
+	if err != nil {
+		t.Fatalf("watch: %v", err)
 	}
-	if status.Code(err) != codes.Unimplemented {
-		t.Fatalf("watch: %v, want Unimplemented", err)
+	if resp, err := w.Recv(); err != nil || resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+		t.Fatalf("watch: %v %v, want SERVING", resp.GetStatus(), err)
 	}
-	if st, md, err := check(t, hc, ""); err != nil || st != healthpb.HealthCheckResponse_SERVING || healthHeader(t, md).Status != health.OK {
+	if st, md, err := check(t, hc, ""); err != nil || st != healthpb.HealthCheckResponse_SERVING || healthHeader(t, md).Status != health.StateOK {
 		t.Fatalf("no checker: %v %v", st, err)
 	}
 }

@@ -4,37 +4,31 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
+	"github.com/Bugs5382/go-buildinfo/health"
+	"github.com/Bugs5382/go-buildinfo/httpbuildinfo"
 )
 
 // RegisterHTTPHealth serves the broker's HTTP health routes from checker, the
-// same readiness the gRPC health check answers:
+// same readiness the gRPC health check answers, with go-buildinfo's handlers:
 //
 //   - /livez: 200 {"status":"ok"} while the process answers; never a dependency.
 //   - /readyz: 200 when ready (ok or degraded), 503 when a required dependency
-//     is down; the body is the health.Report.
-//   - /health: 200 "ok" when ready, 503 otherwise (the older plain form).
-func RegisterHTTPHealth(mux *http.ServeMux, checker *health.Checker) {
-	mux.HandleFunc("/livez", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		rep := report(r.Context(), checker)
-		w.Header().Set("Content-Type", "application/json")
-		if !rep.Ready() {
-			w.WriteHeader(http.StatusServiceUnavailable)
-		}
-		_ = json.NewEncoder(w).Encode(rep)
-	})
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		if !report(r.Context(), checker).Ready() {
-			http.Error(w, "not ready", http.StatusServiceUnavailable)
-			return
-		}
-		_, _ = w.Write([]byte("ok"))
-	})
+//     is down; the body is the readiness report with the build.
+//
+// Both carry the Sneakers-Version and Sneakers-Commit headers. A nil checker
+// is always ready.
+func RegisterHTTPHealth(mux *http.ServeMux, checker *health.Checker) error {
+	opts := []httpbuildinfo.Option{httpbuildinfo.WithPrefix(HeaderPrefix)}
+	if checker != nil {
+		opts = append(opts, httpbuildinfo.WithChecker(checker))
+	}
+	h, err := httpbuildinfo.New(opts...)
+	if err != nil {
+		return err
+	}
+	mux.Handle("/livez", h.Livez())
+	mux.Handle("/readyz", h.Readyz())
+	return nil
 }

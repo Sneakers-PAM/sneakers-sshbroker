@@ -7,7 +7,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags "-X github.com/Sneakers-PAM/sneakers-sshbroker/internal/buildinfo.Version=${VERSION} -X github.com/Sneakers-PAM/sneakers-sshbroker/internal/buildinfo.Commit=${COMMIT}" -o /out/sshbroker ./cmd/sshbroker
+RUN CGO_ENABLED=0 go build -ldflags "-X github.com/Bugs5382/go-buildinfo.Version=${VERSION} -X github.com/Bugs5382/go-buildinfo.Commit=${COMMIT}" -o /out/sshbroker ./cmd/sshbroker
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=build /out/sshbroker /sshbroker

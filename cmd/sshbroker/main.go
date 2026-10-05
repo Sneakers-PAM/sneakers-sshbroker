@@ -24,7 +24,6 @@ import (
 
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/audit"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/grpcsvc"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/vault"
@@ -205,10 +204,13 @@ func main() {
 	defer func() { _ = vaultConn.Close() }()
 	keyFetcher := vault.New(vaultv1.NewVaultServiceClient(vaultConn))
 
-	// Readiness: the gRPC health check (service "") and /readyz and /health
-	// follow these; service "liveness" and /livez check the process only.
-	checker := health.New(log.NewLogger(serviceName), readinessDeps(store, os.Getenv("REDIS_URL") != "",
+	// Readiness: the gRPC health check (service "") and /readyz follow these;
+	// service "liveness" and /livez check the process only.
+	checker, err := server.NewChecker(log.NewLogger(serviceName), readinessDeps(store, os.Getenv("REDIS_URL") != "",
 		healthpb.NewHealthClient(vaultConn), healthpb.NewHealthClient(auditConn)))
+	if err != nil {
+		logger.Fatal().Err(err).Msg("health checker")
+	}
 
 	wsBase := env("SSHBROKER_PUBLIC_WS_URL", "ws://localhost:9097/ssh/session")
 	origins := allowedOrigins(wsBase)
@@ -217,7 +219,9 @@ func main() {
 	// HTTP server: health check plus the WS session endpoint, sharing the
 	// same store instance as the gRPC CreateSession call.
 	mux := http.NewServeMux()
-	server.RegisterHTTPHealth(mux, checker)
+	if err := server.RegisterHTTPHealth(mux, checker); err != nil {
+		logger.Fatal().Err(err).Msg("http health")
+	}
 	// Serve the WS endpoint at both the bare path (dev/local defaults) and the
 	// protocol-namespaced path. An ingress that routes /proto to this service
 	// WITHOUT stripping the prefix delivers a browser connecting to
