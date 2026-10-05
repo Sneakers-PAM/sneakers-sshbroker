@@ -3,7 +3,9 @@
 
 // Package server provides a Run helper that boots a gRPC server with the
 // standard health + reflection services and graceful shutdown on context
-// cancellation.
+// cancellation. Health service "" is readiness, which follows the
+// dependencies a health.Checker watches; service "liveness" is the process
+// only.
 package server
 
 import (
@@ -13,8 +15,8 @@ import (
 	"time"
 
 	otel "github.com/Bugs5382/go-otel"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
@@ -32,12 +34,12 @@ const gracefulStopTimeout = 10 * time.Second
 // Optional grpc.ServerOptions (e.g. interceptors) are passed through to
 // grpc.NewServer; callers that pass none get the previous behaviour.
 func Run(ctx context.Context, port string, register func(*grpc.Server), opts ...grpc.ServerOption) error {
-	return RunWithHealth(ctx, port, health.NewServer(), register, opts...)
+	return RunWithHealth(ctx, port, nil, register, opts...)
 }
 
-// RunWithHealth is Run with a caller-owned health server, so the caller can
-// answer NOT_SERVING until its dependencies are ready.
-func RunWithHealth(ctx context.Context, port string, hs *health.Server, register func(*grpc.Server), opts ...grpc.ServerOption) error {
+// RunWithHealth is Run with readiness following checker: NOT_SERVING while a
+// required dependency is down. A nil checker is always ready.
+func RunWithHealth(ctx context.Context, port string, checker *health.Checker, register func(*grpc.Server), opts ...grpc.ServerOption) error {
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -70,7 +72,7 @@ func RunWithHealth(ctx context.Context, port string, hs *health.Server, register
 	opts = append(defaults, opts...)
 
 	s := grpc.NewServer(opts...)
-	healthpb.RegisterHealthServer(s, hs)
+	healthpb.RegisterHealthServer(s, &healthServer{checker: checker})
 	reflection.Register(s)
 	if register != nil {
 		register(s)
