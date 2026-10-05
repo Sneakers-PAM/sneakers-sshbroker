@@ -59,6 +59,10 @@ task license  # check the Apache-2.0 headers (golic)
 - [docs/runbook.md](docs/runbook.md): operating the service.
 - [proto/sneakers/sshbroker/v1/sshbroker.proto](proto/sneakers/sshbroker/v1/sshbroker.proto): the API definition.
 
+## 🙏 Acknowledgements
+
+Sneakers-PAM was originally written by [@Bugs5382](https://github.com/Bugs5382).
+
 ## ⚖️ License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
