@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/Bugs5382/go-log"
+	"github.com/Bugs5382/go-buildinfo/health"
 	bredis "github.com/Bugs5382/go-redis"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -39,11 +38,12 @@ func TestReadiness_RealValkeyStopsAndStarts(t *testing.T) {
 	t.Cleanup(store.Close)
 	store.Attach(session.NewRedisStore(rc))
 
-	clk := &testClock{t: time.Now()}
-	checker := health.New(log.Nop(), []health.Dep{{Name: "valkey", Required: true, Check: store.Ping}}, health.WithClock(clk.now))
+	checker := newTestChecker(t, health.Dependency{Name: "valkey", Required: true, Check: store.Ping})
 	hc := startWithHealth(t, checker)
 	mux := http.NewServeMux()
-	RegisterHTTPHealth(mux, checker)
+	if err := RegisterHTTPHealth(mux, checker); err != nil {
+		t.Fatal(err)
+	}
 
 	if st, _, err := check(t, hc, ""); err != nil || st != healthpb.HealthCheckResponse_SERVING {
 		t.Fatalf("valkey up: %v %v", st, err)
@@ -56,7 +56,7 @@ func TestReadiness_RealValkeyStopsAndStarts(t *testing.T) {
 	}
 	docker("stop", container)
 	t.Cleanup(func() { _ = exec.Command("docker", "start", container).Run() })
-	clk.add(health.CacheTTL)
+	time.Sleep(testTTL)
 	if st, _, err := check(t, hc, ""); err != nil || st != healthpb.HealthCheckResponse_NOT_SERVING {
 		t.Fatalf("valkey stopped: readiness %v %v, want NOT_SERVING", st, err)
 	}
@@ -73,7 +73,6 @@ func TestReadiness_RealValkeyStopsAndStarts(t *testing.T) {
 	docker("start", container)
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		clk.add(health.CacheTTL)
 		st, _, err := check(t, hc, "")
 		if err == nil && st == healthpb.HealthCheckResponse_SERVING {
 			break
@@ -81,6 +80,6 @@ func TestReadiness_RealValkeyStopsAndStarts(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("valkey back: readiness %v %v, want SERVING", st, err)
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(testTTL)
 	}
 }

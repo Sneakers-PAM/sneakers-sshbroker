@@ -14,8 +14,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/Bugs5382/go-buildinfo/health"
 	otel "github.com/Bugs5382/go-otel"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
 	"google.golang.org/grpc"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
@@ -40,6 +40,10 @@ func Run(ctx context.Context, port string, register func(*grpc.Server), opts ...
 // RunWithHealth is Run with readiness following checker: NOT_SERVING while a
 // required dependency is down. A nil checker is always ready.
 func RunWithHealth(ctx context.Context, port string, checker *health.Checker, register func(*grpc.Server), opts ...grpc.ServerOption) error {
+	hs, bi, err := newHealth(checker)
+	if err != nil {
+		return fmt.Errorf("health: %w", err)
+	}
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -66,17 +70,21 @@ func RunWithHealth(ctx context.Context, port string, checker *health.Checker, re
 	// panics on a second).
 	defaults := []grpc.ServerOption{
 		grpc.StatsHandler(otel.GRPCServerStatsHandler()),
-		grpc.ChainUnaryInterceptor(RecoveryUnaryInterceptor(), VersionUnaryInterceptor()),
-		grpc.ChainStreamInterceptor(RecoveryStreamInterceptor()),
+		grpc.ChainUnaryInterceptor(RecoveryUnaryInterceptor(), bi.UnaryServerInterceptor(), reportUnaryInterceptor(checker)),
+		grpc.ChainStreamInterceptor(RecoveryStreamInterceptor(), bi.StreamServerInterceptor()),
 	}
 	opts = append(defaults, opts...)
 
 	s := grpc.NewServer(opts...)
-	healthpb.RegisterHealthServer(s, &healthServer{checker: checker})
+	healthpb.RegisterHealthServer(s, hs)
 	reflection.Register(s)
 	if register != nil {
 		register(s)
 	}
+
+	biCtx, stopBI := context.WithCancel(ctx)
+	defer stopBI()
+	go bi.Run(biCtx)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -89,6 +97,7 @@ func RunWithHealth(ctx context.Context, port string, checker *health.Checker, re
 
 	select {
 	case <-ctx.Done():
+		hs.Shutdown()
 		stopped := make(chan struct{})
 		go func() {
 			s.GracefulStop()

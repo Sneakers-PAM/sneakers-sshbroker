@@ -30,7 +30,7 @@ Read [docs/runbook.md](docs/runbook.md) before you deploy it.
 go run ./cmd/sshbroker
 ```
 
-gRPC listens on port 9096 and HTTP (the WebSocket endpoint, `/health`, `/readyz` and `/livez`) on port 9097. With no
+gRPC listens on port 9096 and HTTP (the WebSocket endpoint, `/readyz` and `/livez`) on port 9097. With no
 `REDIS_URL` the tickets stay in memory; with it, the broker is not ready until Redis answers. The
 audit and vault services are optional for a local run: audit events that can't be sent are logged
 and dropped, and a reference ticket fails without the vault.

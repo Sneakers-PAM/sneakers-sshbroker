@@ -11,27 +11,33 @@ their own client stubs from that proto, the way the broker calls the vault and a
 [Calling other services](#calling-other-services)).
 
 The server also registers the gRPC health service (`grpc.health.v1.Health`) and server
-reflection. The health service answers two names:
+reflection. The health service is go-buildinfo's (`github.com/Bugs5382/go-buildinfo`) and answers
+two names:
 
 - `""` (the default) is readiness: `SERVING` unless a required dependency is down, then
   `NOT_SERVING`. Its answer carries `sneakers-health`, the readiness report as compact JSON:
-  `{"status":"ok|degraded|down","dependencies":[{"name":"valkey","state":"ok","required":true,"checkedAt":"2026-10-05T12:00:00Z"}]}`.
+  `{"status":"ok|degraded|down","ready":true,"dependencies":[{"name":"valkey","state":"ok","required":true,"checkedAt":"2026-10-05T12:00:00Z"}]}`.
   A failing dependency adds `error`, a class from a fixed set (`timeout`, `refused`,
-  `unavailable`, `unauthenticated`, `error`), never the error's text or an address.
+  `unavailable`, `unauthenticated`, `connection-refused`, `dns`, `network`, `canceled`, `panic`,
+  `error`), never the error's text or an address.
 - `liveness` is the process only: `SERVING` while the process answers, whatever its
   dependencies.
 
-Any other name gets `NotFound`, and `Watch` is unimplemented. Each dependency is checked with a
+Any other name gets `NotFound`. `Watch` streams the serving status of either name as it changes.
+Each dependency is checked with a
 1-second timeout and the result is reused for 5 seconds, so probes don't load the dependencies;
 readiness recovers on its own once the dependency is back and that window has passed.
 
 The HTTP port serves the same readiness: `GET /readyz` answers 200 (ok or degraded) or 503 (a
-required dependency down) with the report as its body, `GET /livez` always answers 200
-`{"status":"ok"}`, and `GET /health` answers `200 ok` or `503 not ready` from the readiness.
+required dependency down) with the report and the build as its body
+(`{"status":"ok","ready":true,"build":{"version":"v0.1.0","commit":"...","goVersion":"...","modified":false},"dependencies":[...]}`),
+and `GET /livez` always answers 200 `{"status":"ok"}`. There is no plain `/health` route.
 
-A health check's answer carries the build in its response headers: `sneakers-version` (the image
-tag, `dev` when unstamped) and `sneakers-commit` (the source commit, `unknown` when neither the
-build nor Go's VCS stamp knows it). The gateway's diagnostics read them.
+Every health check's answer, gRPC or HTTP, carries the build in its response headers:
+`sneakers-version` (the image tag, `dev` when unstamped) and `sneakers-commit` (the source commit,
+`unknown` when neither the build nor Go's VCS stamp knows it). A readiness answer also carries
+`sneakers-depstate-<name>` (`ok`, `degraded` or `down`) for each dependency. HTTP writes the names
+canonicalized (`Sneakers-Version`). The gateway's diagnostics read them.
 
 ### Callers
 

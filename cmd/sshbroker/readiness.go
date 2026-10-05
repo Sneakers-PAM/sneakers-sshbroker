@@ -7,7 +7,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
+	"github.com/Bugs5382/go-buildinfo/health"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -22,10 +23,10 @@ import (
 //     it, so its outage degrades the broker rather than taking it out.
 //   - audit: optional. Session events are best effort; a session never fails
 //     because audit is down.
-func readinessDeps(store *session.Composite, redisSet bool, vault, audit health.HealthChecker) []health.Dep {
-	var deps []health.Dep
+func readinessDeps(store *session.Composite, redisSet bool, vault, audit server.HealthChecker) []health.Dependency {
+	var deps []health.Dependency
 	if redisSet {
-		deps = append(deps, health.Dep{Name: "valkey", Required: true, Check: func(ctx context.Context) error {
+		deps = append(deps, health.Dependency{Name: "valkey", Required: true, Check: func(ctx context.Context) error {
 			err := store.Ping(ctx)
 			if errors.Is(err, session.ErrSharedNotAttached) {
 				return status.Error(codes.Unavailable, "ticket store not connected")
@@ -34,7 +35,7 @@ func readinessDeps(store *session.Composite, redisSet bool, vault, audit health.
 		}})
 	}
 	return append(deps,
-		health.Dep{Name: "vault", Check: health.GRPCPeer(vault)},
-		health.Dep{Name: "audit", Check: health.GRPCPeer(audit)},
+		health.Dependency{Name: "vault", Check: server.GRPCPeer(vault)},
+		health.Dependency{Name: "audit", Check: server.GRPCPeer(audit)},
 	)
 }
