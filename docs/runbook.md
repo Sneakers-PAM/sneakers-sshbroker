@@ -54,6 +54,14 @@ The broker is ready at once with `REDIS_URL` unset, and once Redis has answered 
 then both checks report not ready (`NOT_SERVING` on gRPC) and `CreateSession` returns
 `Unavailable`. Neither checks the vault or the audit service, nor Redis after it first answered.
 
+To see which build is running, ask for the response headers (`grpcurl -v ... grpc.health.v1.Health/Check`):
+the answer carries `sneakers-version` and `sneakers-commit`. The image build stamps them from its
+`VERSION` and `COMMIT` build arguments:
+
+```bash
+docker build --build-arg VERSION=v0.1.0 --build-arg COMMIT="$(git rev-parse HEAD)" .
+```
+
 ## Replicas and Redis
 
 - With `REDIS_URL` set, reference tickets go to Redis only. A broker that starts before Redis
