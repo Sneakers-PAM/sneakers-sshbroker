@@ -10,8 +10,24 @@ Other services don't import this module's Go code: they pin a commit of this rep
 their own client stubs from that proto, the way the broker calls the vault and audit (see
 [Calling other services](#calling-other-services)).
 
-The server also registers the standard gRPC health service (`grpc.health.v1.Health`) and server
-reflection.
+The server also registers the gRPC health service (`grpc.health.v1.Health`) and server
+reflection. The health service answers two names:
+
+- `""` (the default) is readiness: `SERVING` unless a required dependency is down, then
+  `NOT_SERVING`. Its answer carries `sneakers-health`, the readiness report as compact JSON:
+  `{"status":"ok|degraded|down","dependencies":[{"name":"valkey","state":"ok","required":true,"checkedAt":"2026-10-05T12:00:00Z"}]}`.
+  A failing dependency adds `error`, a class from a fixed set (`timeout`, `refused`,
+  `unavailable`, `unauthenticated`, `error`), never the error's text or an address.
+- `liveness` is the process only: `SERVING` while the process answers, whatever its
+  dependencies.
+
+Any other name gets `NotFound`, and `Watch` is unimplemented. Each dependency is checked with a
+1-second timeout and the result is reused for 5 seconds, so probes don't load the dependencies;
+readiness recovers on its own once the dependency is back and that window has passed.
+
+The HTTP port serves the same readiness: `GET /readyz` answers 200 (ok or degraded) or 503 (a
+required dependency down) with the report as its body, `GET /livez` always answers 200
+`{"status":"ok"}`, and `GET /health` answers `200 ok` or `503 not ready` from the readiness.
 
 A health check's answer carries the build in its response headers: `sneakers-version` (the image
 tag, `dev` when unstamped) and `sneakers-commit` (the source commit, `unknown` when neither the

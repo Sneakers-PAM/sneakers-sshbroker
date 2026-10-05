@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -21,11 +20,11 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/audit"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/grpcsvc"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/vault"
@@ -48,9 +47,9 @@ func env(k, def string) string {
 //     at once.
 //   - Set: every reference ticket goes to Redis, never to memory. If Redis
 //     isn't answering yet the broker keeps trying in the background and stays
-//     not ready (gRPC health NOT_SERVING, /health 503, CreateSession
-//     Unavailable) until it does, so no replica mints a ticket the others
-//     can't redeem.
+//     not ready (readiness follows the valkey dependency; CreateSession
+//     answers Unavailable) until it does, so no replica mints a ticket the
+//     others can't redeem.
 //   - Malformed: the start fails, so a typo can't quietly split the replicas.
 //
 // The *bredis.Client is never closed: the process holds it for its lifetime.
@@ -174,16 +173,7 @@ func main() {
 		}
 	}()
 
-	// Readiness: the gRPC health check (the chart's probe) and /health report
-	// not ready until the ticket store is (see newTicketStore).
-	hs := health.NewServer()
-	hs.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
-	var ready atomic.Bool
-	onReady := func() {
-		ready.Store(true)
-		hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
-		logger.Info().Msg("sshbroker ready")
-	}
+	onReady := func() { logger.Info().Msg("sshbroker ticket store ready") }
 
 	// Ticket store. The pod-local in-memory store always exists (it holds
 	// inline-key sessions, and every ticket when REDIS_URL is unset). With
@@ -215,6 +205,11 @@ func main() {
 	defer func() { _ = vaultConn.Close() }()
 	keyFetcher := vault.New(vaultv1.NewVaultServiceClient(vaultConn))
 
+	// Readiness: the gRPC health check (service "") and /readyz and /health
+	// follow these; service "liveness" and /livez check the process only.
+	checker := health.New(log.NewLogger(serviceName), readinessDeps(store, os.Getenv("REDIS_URL") != "",
+		healthpb.NewHealthClient(vaultConn), healthpb.NewHealthClient(auditConn)))
+
 	wsBase := env("SSHBROKER_PUBLIC_WS_URL", "ws://localhost:9097/ssh/session")
 	origins := allowedOrigins(wsBase)
 	logger.Info().Strs("origins", origins).Msg("websocket origins allowed")
@@ -222,7 +217,7 @@ func main() {
 	// HTTP server: health check plus the WS session endpoint, sharing the
 	// same store instance as the gRPC CreateSession call.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", server.HealthHandler(ready.Load))
+	server.RegisterHTTPHealth(mux, checker)
 	// Serve the WS endpoint at both the bare path (dev/local defaults) and the
 	// protocol-namespaced path. An ingress that routes /proto to this service
 	// WITHOUT stripping the prefix delivers a browser connecting to
@@ -248,7 +243,7 @@ func main() {
 	broker := grpcsvc.NewBroker(store, auditEmitter, wsBase)
 
 	logger.Info().Str("grpc", grpcPort).Msg("starting sshbroker")
-	if err := server.RunWithHealth(ctx, grpcPort, hs, func(gs *grpc.Server) {
+	if err := server.RunWithHealth(ctx, grpcPort, checker, func(gs *grpc.Server) {
 		grpcsvc.RegisterServer(gs, broker)
 	}, workloadAuth(ctx, auditEmitter)...); err != nil {
 		logger.Fatal().Err(err).Msg("server exited")

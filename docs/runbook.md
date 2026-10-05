@@ -43,16 +43,33 @@ in use) is logged at error level, but the process keeps running with gRPC only, 
 
 ## Health
 
-- HTTP: `GET /health` on `HTTP_PORT` answers `200 ok` when ready and `503 not ready` otherwise.
-- gRPC: the standard health check:
+- HTTP on `HTTP_PORT`: `GET /readyz` (200 or 503, with the readiness report as JSON),
+  `GET /livez` (always 200) and `GET /health` (`200 ok` or `503 not ready`, from the readiness).
+- gRPC: the standard health check; service `""` is readiness and service `liveness` is the
+  process only:
 
   ```bash
   grpcurl -plaintext localhost:9096 grpc.health.v1.Health/Check
+  grpcurl -plaintext -d '{"service":"liveness"}' localhost:9096 grpc.health.v1.Health/Check
   ```
 
-The broker is ready at once with `REDIS_URL` unset, and once Redis has answered with it set. Until
-then both checks report not ready (`NOT_SERVING` on gRPC) and `CreateSession` returns
-`Unavailable`. Neither checks the vault or the audit service, nor Redis after it first answered.
+### Readiness and liveness
+
+Readiness fails while a required dependency is down, so traffic stops reaching a pod that can't
+serve it; liveness never looks at a dependency, so an outage doesn't restart every pod. The
+kubelet's gRPC liveness probe has to ask for service `liveness` (or the HTTP probe for `/livez`);
+that is set in the sneakers-release chart.
+
+| Dependency | Required | Check | Why |
+|---|---|---|---|
+| `valkey` | yes | `PING` on the shared ticket store; down until it first connects | With `REDIS_URL` set every reference ticket lives in Redis, so a broker that can't reach it can't mint or redeem one, and `CreateSession` answers `Unavailable`. Present only when `REDIS_URL` is set: without it the tickets are in memory and the broker is ready at once. |
+| `vault` | no | its gRPC health check | The broker reaches the vault only when a reference ticket is redeemed at WebSocket connect, to reveal the key. `CreateSession` and inline-key sessions don't need it, so an unreachable vault makes the broker `degraded`, not unready. |
+| `audit` | no | its gRPC health check | Session events are best effort: a session never fails because audit is down. |
+
+Read the report with `grpcurl -v -plaintext localhost:9096 grpc.health.v1.Health/Check` (the
+`sneakers-health` header) or `curl localhost:9097/readyz`. Each change of a dependency's state is
+logged once: `health: dependency down` or `degraded` at warn, `health: dependency recovered` at
+info, with the dependency's name and error class.
 
 To see which build is running, ask for the response headers (`grpcurl -v ... grpc.health.v1.Health/Check`):
 the answer carries `sneakers-version` and `sneakers-commit`. The image build stamps them from its
@@ -67,9 +84,10 @@ docker build --build-arg VERSION=v0.1.0 --build-arg COMMIT="$(git rev-parse HEAD
 - With `REDIS_URL` set, reference tickets go to Redis only. A broker that starts before Redis
   answers logs `redis unreachable; not ready, retrying` on every attempt (1 second apart, doubling
   to 30 seconds) and logs `shared redis ticket store attached; ready (HA)` once it connects. It
-  never falls back to memory, so every replica redeems every reference ticket. The chart's probes
-  use the gRPC health check, so a broker whose Redis never answers fails its startup probe and is
-  restarted.
+  never falls back to memory, so every replica redeems every reference ticket. The chart's
+  startup and readiness probes use the gRPC readiness check, so a broker whose Redis never
+  answers fails its startup probe and is restarted; once started, a Redis outage takes the pod
+  out of service until Redis is back, without restarting it.
 - With Redis, reference tickets are stored under `sneakers:sshbroker:ticket:<ticket>`, as JSON
   holding the target, the user, the secret id and the actor (never key material), with the
   ticket's time to live as the key's expiry. Redemption uses `GETDEL`, so a ticket is used once

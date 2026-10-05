@@ -5,77 +5,82 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	log "github.com/Bugs5382/go-log"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/health"
 )
 
-// TestRunWithHealthReportsCallerStatus: the gRPC health check (the chart's
-// probe) answers with the status the caller sets, so a broker waiting for
-// Redis is NOT_SERVING and turns SERVING when Redis answers.
-func TestRunWithHealthReportsCallerStatus(t *testing.T) {
-	port := freePort(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	hs := health.NewServer()
-	hs.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
-	done := make(chan error, 1)
-	go func() { done <- RunWithHealth(ctx, port, hs, func(*grpc.Server) {}) }()
+func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
 
-	conn, err := grpc.NewClient("127.0.0.1:"+port, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close() }()
-	hc := healthpb.NewHealthClient(conn)
+// TestHTTPHealth_FollowsReadiness: /health and /readyz answer 503 while a
+// required dependency is down and recover after the cache window; /livez
+// stays 200 throughout.
+func TestHTTPHealth_FollowsReadiness(t *testing.T) {
+	clk := &testClock{t: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)}
+	var down atomic.Bool
+	down.Store(true)
+	checker := health.New(log.Nop(), []health.Dep{
+		{Name: "valkey", Required: true, Check: func(context.Context) error {
+			if down.Load() {
+				return errors.New("dial tcp valkey.example.test:6379: auth hunter2-secret")
+			}
+			return nil
+		}},
+	}, health.WithClock(clk.now))
+	mux := http.NewServeMux()
+	RegisterHTTPHealth(mux, checker)
 
-	check := func() healthpb.HealthCheckResponse_ServingStatus {
-		t.Helper()
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			resp, err := hc.Check(ctx, &healthpb.HealthCheckRequest{})
-			if err == nil {
-				return resp.GetStatus()
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("health check: %v", err)
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
+	if rec := get(t, mux, "/health"); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/health down: %d, want 503", rec.Code)
 	}
-	if got := check(); got != healthpb.HealthCheckResponse_NOT_SERVING {
-		t.Fatalf("status = %v, want NOT_SERVING", got)
+	rec := get(t, mux, "/readyz")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/readyz down: %d, want 503", rec.Code)
 	}
-	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
-	if got := check(); got != healthpb.HealthCheckResponse_SERVING {
-		t.Fatalf("status = %v, want SERVING", got)
+	if strings.Contains(rec.Body.String(), "hunter2") || strings.Contains(rec.Body.String(), "valkey.example.test") {
+		t.Fatalf("/readyz leaks the error: %s", rec.Body.String())
 	}
-	cancel()
-	if err := <-done; err != nil {
-		t.Fatalf("RunWithHealth: %v", err)
+	var r health.Report
+	if err := json.Unmarshal(rec.Body.Bytes(), &r); err != nil || r.Status != health.Down || r.Dependencies[0].Error != "error" {
+		t.Fatalf("/readyz body %q: %+v %v", rec.Body.String(), r, err)
+	}
+	if rec := get(t, mux, "/livez"); rec.Code != http.StatusOK || rec.Body.String() != `{"status":"ok"}` {
+		t.Fatalf("/livez while down: %d %q, want 200", rec.Code, rec.Body.String())
+	}
+
+	down.Store(false)
+	clk.add(health.CacheTTL)
+	if rec := get(t, mux, "/health"); rec.Code != http.StatusOK || rec.Body.String() != "ok" {
+		t.Fatalf("/health recovered: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := get(t, mux, "/readyz"); rec.Code != http.StatusOK {
+		t.Fatalf("/readyz recovered: %d", rec.Code)
 	}
 }
 
-func TestHealthHandlerFollowsReadiness(t *testing.T) {
-	var ready atomic.Bool
-	h := HealthHandler(ready.Load)
-
-	rec := httptest.NewRecorder()
-	h(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("not ready: code = %d, want 503", rec.Code)
-	}
-	ready.Store(true)
-	rec = httptest.NewRecorder()
-	h(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
-	if rec.Code != http.StatusOK || rec.Body.String() != "ok" {
-		t.Fatalf("ready: code = %d body = %q, want 200 ok", rec.Code, rec.Body.String())
+func TestHTTPHealth_OptionalDependencyStaysReady(t *testing.T) {
+	checker := health.New(log.Nop(), []health.Dep{
+		{Name: "vault", Check: func(context.Context) error { return errors.New("down") }},
+	})
+	mux := http.NewServeMux()
+	RegisterHTTPHealth(mux, checker)
+	rec := get(t, mux, "/readyz")
+	var r health.Report
+	_ = json.Unmarshal(rec.Body.Bytes(), &r)
+	if rec.Code != http.StatusOK || r.Status != health.Degraded {
+		t.Fatalf("/readyz: %d %+v, want 200 degraded", rec.Code, r)
 	}
 }
