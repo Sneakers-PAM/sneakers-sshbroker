@@ -87,6 +87,25 @@ func (e *Emitter) Refused(ctx context.Context, actorUserID, secretID, targetID, 
 	})
 }
 
+// HostKeyScan records a hostkey.scan audit event for a ScanHostKey call with
+// its outcome (ok, refused, rate_limited, unreachable, handshake_failed). The
+// attributes carry the key's type and SHA256 fingerprint, never the key.
+// Best-effort: errors are logged and swallowed.
+func (e *Emitter) HostKeyScan(ctx context.Context, actorUserID, targetID, host, outcome string, attrs map[string]string) {
+	a := map[string]string{"target_id": targetID, "host": host, "outcome": outcome}
+	for k, v := range attrs {
+		a[k] = v
+	}
+	e.emit(ctx, &auditv1.RecordEventRequest{
+		Tier:        auditv1.Tier_TIER_AUDIT,
+		Action:      "hostkey.scan",
+		ActorUserId: actorUserID,
+		Subject:     targetID,
+		Attributes:  a,
+		OccurredAt:  time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
 func (e *Emitter) emit(ctx context.Context, req *auditv1.RecordEventRequest) {
 	if e == nil || e.client == nil {
 		return

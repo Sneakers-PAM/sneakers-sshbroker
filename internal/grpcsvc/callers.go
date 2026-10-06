@@ -19,12 +19,13 @@ import (
 const CallerGateway = "gateway"
 
 // CallerPolicy is the broker's per-method allow-list. Only the gateway may
-// call CreateSession, and it passes the signed-in user's actor, which the
-// broker forwards to the vault. Every other caller, the MCP server included,
-// is refused.
+// call CreateSession and ScanHostKey, and it passes the signed-in user's
+// actor, which the broker forwards to the vault. Every other caller, the MCP
+// server included, is refused.
 func CallerPolicy() workloadauth.Policy {
 	return workloadauth.Policy{
 		sshbrokerv1.SSHBrokerService_CreateSession_FullMethodName: {CallerGateway: workloadauth.OnBehalf},
+		sshbrokerv1.SSHBrokerService_ScanHostKey_FullMethodName:   {CallerGateway: workloadauth.OnBehalf},
 	}
 }
 
@@ -32,8 +33,14 @@ func CallerPolicy() workloadauth.Policy {
 // token against CallerPolicy, auditing each refusal as session.refuse.
 func AuthServerOptions(v workloadauth.TokenVerifier, aud *audit.Emitter, lg log.Logger) []grpc.ServerOption {
 	hook := workloadauth.WithDenyHook(func(ctx context.Context, d workloadauth.Denial) {
-		req, _ := d.Request.(*sshbrokerv1.CreateSessionRequest)
-		aud.Refused(ctx, req.GetActorUserId(), req.GetSecretId(), req.GetTargetId(), d.Reason, map[string]string{
+		var actor, secret, target string
+		switch req := d.Request.(type) {
+		case *sshbrokerv1.CreateSessionRequest:
+			actor, secret, target = req.GetActorUserId(), req.GetSecretId(), req.GetTargetId()
+		case *sshbrokerv1.ScanHostKeyRequest:
+			actor, target = req.GetActorUserId(), req.GetTargetId()
+		}
+		aud.Refused(ctx, actor, secret, target, d.Reason, map[string]string{
 			"caller": d.Caller.Name,
 			"method": d.Method,
 			"code":   d.Code.String(),

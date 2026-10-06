@@ -26,6 +26,12 @@ option go_package = "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/
 //     gateway keeps working during a rollout; prefer the reference form.
 service SSHBrokerService {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  // ScanHostKey connects to a target, reads the host key it offers during
+  // the SSH handshake and returns it. It never authenticates and never opens
+  // a session: the handshake is abandoned as soon as the key arrives. Bounded
+  // by a short timeout and a per-actor rate limit; audited as hostkey.scan
+  // with the SHA256 fingerprint only. People in the web app only.
+  rpc ScanHostKey(ScanHostKeyRequest) returns (ScanHostKeyResponse);
 }
 
 // PrincipalKind mirrors sneakers.vault.v1.PrincipalKind (same names and
@@ -89,4 +95,19 @@ message CreateSessionResponse {
   string ticket = 2;             // single-use, opaque
   string ws_url = 3;             // base WS url (browser appends ?ticket=)
   int32 expires_in_seconds = 4;
+}
+
+message ScanHostKeyRequest {
+  string host = 1;
+  int32 port = 2;           // 0 => 22
+  string target_id = 3;     // the vault target being scanned, for audit
+  string actor_user_id = 4; // for audit and the rate limit, NOT authz
+  // Only PRINCIPAL_KIND_HUMAN is accepted; anything else is PermissionDenied.
+  ActorContext actor = 5;
+}
+
+message ScanHostKeyResponse {
+  string key_type = 1;           // e.g. ssh-ed25519
+  string public_key = 2;         // authorized_keys form, no comment
+  string fingerprint_sha256 = 3; // SHA256:<base64>, as ssh-keygen -l prints it
 }
