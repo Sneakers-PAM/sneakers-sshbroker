@@ -58,6 +58,7 @@ const (
 	VaultService_SimulateFolder_FullMethodName                  = "/sneakers.vault.v1.VaultService/SimulateFolder"
 	VaultService_SimulateSecret_FullMethodName                  = "/sneakers.vault.v1.VaultService/SimulateSecret"
 	VaultService_ListSecretsInFolder_FullMethodName             = "/sneakers.vault.v1.VaultService/ListSecretsInFolder"
+	VaultService_ReorderSecrets_FullMethodName                  = "/sneakers.vault.v1.VaultService/ReorderSecrets"
 	VaultService_GetSecret_FullMethodName                       = "/sneakers.vault.v1.VaultService/GetSecret"
 	VaultService_CreateSecret_FullMethodName                    = "/sneakers.vault.v1.VaultService/CreateSecret"
 	VaultService_UpdateSecret_FullMethodName                    = "/sneakers.vault.v1.VaultService/UpdateSecret"
@@ -80,6 +81,11 @@ const (
 	VaultService_RevealSecretVersionField_FullMethodName        = "/sneakers.vault.v1.VaultService/RevealSecretVersionField"
 	VaultService_RestoreSecretVersion_FullMethodName            = "/sneakers.vault.v1.VaultService/RestoreSecretVersion"
 	VaultService_BreakGlassSecret_FullMethodName                = "/sneakers.vault.v1.VaultService/BreakGlassSecret"
+	VaultService_OpenBreakGlassSession_FullMethodName           = "/sneakers.vault.v1.VaultService/OpenBreakGlassSession"
+	VaultService_GetBreakGlassSession_FullMethodName            = "/sneakers.vault.v1.VaultService/GetBreakGlassSession"
+	VaultService_ListBreakGlassItems_FullMethodName             = "/sneakers.vault.v1.VaultService/ListBreakGlassItems"
+	VaultService_CloseBreakGlassSession_FullMethodName          = "/sneakers.vault.v1.VaultService/CloseBreakGlassSession"
+	VaultService_ListBreakGlassSessions_FullMethodName          = "/sneakers.vault.v1.VaultService/ListBreakGlassSessions"
 	VaultService_CopySecret_FullMethodName                      = "/sneakers.vault.v1.VaultService/CopySecret"
 	VaultService_RetireSecret_FullMethodName                    = "/sneakers.vault.v1.VaultService/RetireSecret"
 	VaultService_RestoreSecret_FullMethodName                   = "/sneakers.vault.v1.VaultService/RestoreSecret"
@@ -98,6 +104,7 @@ const (
 	VaultService_ClaimDueRotations_FullMethodName               = "/sneakers.vault.v1.VaultService/ClaimDueRotations"
 	VaultService_RevealForRotation_FullMethodName               = "/sneakers.vault.v1.VaultService/RevealForRotation"
 	VaultService_ReportRotation_FullMethodName                  = "/sneakers.vault.v1.VaultService/ReportRotation"
+	VaultService_ListConnectors_FullMethodName                  = "/sneakers.vault.v1.VaultService/ListConnectors"
 	VaultService_ListPasswordPolicies_FullMethodName            = "/sneakers.vault.v1.VaultService/ListPasswordPolicies"
 	VaultService_SavePasswordPolicy_FullMethodName              = "/sneakers.vault.v1.VaultService/SavePasswordPolicy"
 	VaultService_DeletePasswordPolicy_FullMethodName            = "/sneakers.vault.v1.VaultService/DeletePasswordPolicy"
@@ -106,10 +113,13 @@ const (
 	VaultService_SeedBuiltins_FullMethodName                    = "/sneakers.vault.v1.VaultService/SeedBuiltins"
 	VaultService_GenerateKeyPair_FullMethodName                 = "/sneakers.vault.v1.VaultService/GenerateKeyPair"
 	VaultService_RotateKek_FullMethodName                       = "/sneakers.vault.v1.VaultService/RotateKek"
+	VaultService_SealForImport_FullMethodName                   = "/sneakers.vault.v1.VaultService/SealForImport"
 	VaultService_PrepareSecretUse_FullMethodName                = "/sneakers.vault.v1.VaultService/PrepareSecretUse"
 	VaultService_GetSecretUse_FullMethodName                    = "/sneakers.vault.v1.VaultService/GetSecretUse"
 	VaultService_ListPendingSecretUses_FullMethodName           = "/sneakers.vault.v1.VaultService/ListPendingSecretUses"
 	VaultService_DecideSecretUse_FullMethodName                 = "/sneakers.vault.v1.VaultService/DecideSecretUse"
+	VaultService_ConfirmSecretUse_FullMethodName                = "/sneakers.vault.v1.VaultService/ConfirmSecretUse"
+	VaultService_ListSecretUsesToDecide_FullMethodName          = "/sneakers.vault.v1.VaultService/ListSecretUsesToDecide"
 	VaultService_RedeemSecretUse_FullMethodName                 = "/sneakers.vault.v1.VaultService/RedeemSecretUse"
 	VaultService_CreateUseGrant_FullMethodName                  = "/sneakers.vault.v1.VaultService/CreateUseGrant"
 	VaultService_ListUseGrants_FullMethodName                   = "/sneakers.vault.v1.VaultService/ListUseGrants"
@@ -172,6 +182,9 @@ type VaultServiceClient interface {
 	SimulateSecret(ctx context.Context, in *SimulateSecretRequest, opts ...grpc.CallOption) (*SimulateSecretResponse, error)
 	// Secrets
 	ListSecretsInFolder(ctx context.Context, in *ListSecretsInFolderRequest, opts ...grpc.CallOption) (*ListSecretsInFolderResponse, error)
+	// ReorderSecrets sets the manual order of a folder's active secrets. The
+	// caller needs RACI Author on the folder or must own it.
+	ReorderSecrets(ctx context.Context, in *ReorderSecretsRequest, opts ...grpc.CallOption) (*ReorderSecretsResponse, error)
 	GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error)
 	CreateSecret(ctx context.Context, in *CreateSecretRequest, opts ...grpc.CallOption) (*CreateSecretResponse, error)
 	UpdateSecret(ctx context.Context, in *UpdateSecretRequest, opts ...grpc.CallOption) (*UpdateSecretResponse, error)
@@ -202,6 +215,13 @@ type VaultServiceClient interface {
 	// Emergency access: bypasses checkout/approval gating for a read-eligible
 	// actor; high-severity audit + owner notify + forced rotation-enqueue.
 	BreakGlassSecret(ctx context.Context, in *BreakGlassSecretRequest, opts ...grpc.CallOption) (*BreakGlassSecretResponse, error)
+	// Break-glass browse for human site admins: open, check, list, close, and
+	// the audit view of past sessions with their reveals.
+	OpenBreakGlassSession(ctx context.Context, in *OpenBreakGlassSessionRequest, opts ...grpc.CallOption) (*OpenBreakGlassSessionResponse, error)
+	GetBreakGlassSession(ctx context.Context, in *GetBreakGlassSessionRequest, opts ...grpc.CallOption) (*GetBreakGlassSessionResponse, error)
+	ListBreakGlassItems(ctx context.Context, in *ListBreakGlassItemsRequest, opts ...grpc.CallOption) (*ListBreakGlassItemsResponse, error)
+	CloseBreakGlassSession(ctx context.Context, in *CloseBreakGlassSessionRequest, opts ...grpc.CallOption) (*CloseBreakGlassSessionResponse, error)
+	ListBreakGlassSessions(ctx context.Context, in *ListBreakGlassSessionsRequest, opts ...grpc.CallOption) (*ListBreakGlassSessionsResponse, error)
 	CopySecret(ctx context.Context, in *CopySecretRequest, opts ...grpc.CallOption) (*CopySecretResponse, error)
 	// Secret lifecycle: soft-retire (recoverable), restore, and hard delete (permanent).
 	RetireSecret(ctx context.Context, in *RetireSecretRequest, opts ...grpc.CallOption) (*RetireSecretResponse, error)
@@ -225,6 +245,10 @@ type VaultServiceClient interface {
 	ClaimDueRotations(ctx context.Context, in *ClaimDueRotationsRequest, opts ...grpc.CallOption) (*ClaimDueRotationsResponse, error)
 	RevealForRotation(ctx context.Context, in *RevealForRotationRequest, opts ...grpc.CallOption) (*RevealForRotationResponse, error)
 	ReportRotation(ctx context.Context, in *ReportRotationRequest, opts ...grpc.CallOption) (*ReportRotationResponse, error)
+	// Connector builds: each connector's build (from the sneakers-version and
+	// sneakers-commit metadata of its pull calls) and its last contact, for the
+	// gateway's diagnostics. Caller gateway only, as itself.
+	ListConnectors(ctx context.Context, in *ListConnectorsRequest, opts ...grpc.CallOption) (*ListConnectorsResponse, error)
 	// Instance configuration: password policies + security settings
 	ListPasswordPolicies(ctx context.Context, in *ListPasswordPoliciesRequest, opts ...grpc.CallOption) (*ListPasswordPoliciesResponse, error)
 	SavePasswordPolicy(ctx context.Context, in *SavePasswordPolicyRequest, opts ...grpc.CallOption) (*SavePasswordPolicyResponse, error)
@@ -244,10 +268,14 @@ type VaultServiceClient interface {
 	// Rotates the active working-KEK: mints a new KEK, activates it, and
 	// sweeps existing records to re-wrap their DEKs under it.
 	RotateKek(ctx context.Context, in *RotateKekRequest, opts ...grpc.CallOption) (*RotateKekResponse, error)
+	// Seals field sets for an import without storing them (migrate caller only).
+	SealForImport(ctx context.Context, in *SealForImportRequest, opts ...grpc.CallOption) (*SealForImportResponse, error)
 	PrepareSecretUse(ctx context.Context, in *PrepareSecretUseRequest, opts ...grpc.CallOption) (*PrepareSecretUseResponse, error)
 	GetSecretUse(ctx context.Context, in *GetSecretUseRequest, opts ...grpc.CallOption) (*GetSecretUseResponse, error)
 	ListPendingSecretUses(ctx context.Context, in *ListPendingSecretUsesRequest, opts ...grpc.CallOption) (*ListPendingSecretUsesResponse, error)
 	DecideSecretUse(ctx context.Context, in *DecideSecretUseRequest, opts ...grpc.CallOption) (*DecideSecretUseResponse, error)
+	ConfirmSecretUse(ctx context.Context, in *ConfirmSecretUseRequest, opts ...grpc.CallOption) (*ConfirmSecretUseResponse, error)
+	ListSecretUsesToDecide(ctx context.Context, in *ListSecretUsesToDecideRequest, opts ...grpc.CallOption) (*ListSecretUsesToDecideResponse, error)
 	RedeemSecretUse(ctx context.Context, in *RedeemSecretUseRequest, opts ...grpc.CallOption) (*RedeemSecretUseResponse, error)
 	CreateUseGrant(ctx context.Context, in *CreateUseGrantRequest, opts ...grpc.CallOption) (*CreateUseGrantResponse, error)
 	ListUseGrants(ctx context.Context, in *ListUseGrantsRequest, opts ...grpc.CallOption) (*ListUseGrantsResponse, error)
@@ -627,6 +655,16 @@ func (c *vaultServiceClient) ListSecretsInFolder(ctx context.Context, in *ListSe
 	return out, nil
 }
 
+func (c *vaultServiceClient) ReorderSecrets(ctx context.Context, in *ReorderSecretsRequest, opts ...grpc.CallOption) (*ReorderSecretsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReorderSecretsResponse)
+	err := c.cc.Invoke(ctx, VaultService_ReorderSecrets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *vaultServiceClient) GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetSecretResponse)
@@ -847,6 +885,56 @@ func (c *vaultServiceClient) BreakGlassSecret(ctx context.Context, in *BreakGlas
 	return out, nil
 }
 
+func (c *vaultServiceClient) OpenBreakGlassSession(ctx context.Context, in *OpenBreakGlassSessionRequest, opts ...grpc.CallOption) (*OpenBreakGlassSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OpenBreakGlassSessionResponse)
+	err := c.cc.Invoke(ctx, VaultService_OpenBreakGlassSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) GetBreakGlassSession(ctx context.Context, in *GetBreakGlassSessionRequest, opts ...grpc.CallOption) (*GetBreakGlassSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBreakGlassSessionResponse)
+	err := c.cc.Invoke(ctx, VaultService_GetBreakGlassSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) ListBreakGlassItems(ctx context.Context, in *ListBreakGlassItemsRequest, opts ...grpc.CallOption) (*ListBreakGlassItemsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBreakGlassItemsResponse)
+	err := c.cc.Invoke(ctx, VaultService_ListBreakGlassItems_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) CloseBreakGlassSession(ctx context.Context, in *CloseBreakGlassSessionRequest, opts ...grpc.CallOption) (*CloseBreakGlassSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CloseBreakGlassSessionResponse)
+	err := c.cc.Invoke(ctx, VaultService_CloseBreakGlassSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) ListBreakGlassSessions(ctx context.Context, in *ListBreakGlassSessionsRequest, opts ...grpc.CallOption) (*ListBreakGlassSessionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBreakGlassSessionsResponse)
+	err := c.cc.Invoke(ctx, VaultService_ListBreakGlassSessions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *vaultServiceClient) CopySecret(ctx context.Context, in *CopySecretRequest, opts ...grpc.CallOption) (*CopySecretResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CopySecretResponse)
@@ -1027,6 +1115,16 @@ func (c *vaultServiceClient) ReportRotation(ctx context.Context, in *ReportRotat
 	return out, nil
 }
 
+func (c *vaultServiceClient) ListConnectors(ctx context.Context, in *ListConnectorsRequest, opts ...grpc.CallOption) (*ListConnectorsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListConnectorsResponse)
+	err := c.cc.Invoke(ctx, VaultService_ListConnectors_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *vaultServiceClient) ListPasswordPolicies(ctx context.Context, in *ListPasswordPoliciesRequest, opts ...grpc.CallOption) (*ListPasswordPoliciesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListPasswordPoliciesResponse)
@@ -1107,6 +1205,16 @@ func (c *vaultServiceClient) RotateKek(ctx context.Context, in *RotateKekRequest
 	return out, nil
 }
 
+func (c *vaultServiceClient) SealForImport(ctx context.Context, in *SealForImportRequest, opts ...grpc.CallOption) (*SealForImportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SealForImportResponse)
+	err := c.cc.Invoke(ctx, VaultService_SealForImport_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *vaultServiceClient) PrepareSecretUse(ctx context.Context, in *PrepareSecretUseRequest, opts ...grpc.CallOption) (*PrepareSecretUseResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PrepareSecretUseResponse)
@@ -1141,6 +1249,26 @@ func (c *vaultServiceClient) DecideSecretUse(ctx context.Context, in *DecideSecr
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DecideSecretUseResponse)
 	err := c.cc.Invoke(ctx, VaultService_DecideSecretUse_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) ConfirmSecretUse(ctx context.Context, in *ConfirmSecretUseRequest, opts ...grpc.CallOption) (*ConfirmSecretUseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfirmSecretUseResponse)
+	err := c.cc.Invoke(ctx, VaultService_ConfirmSecretUse_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) ListSecretUsesToDecide(ctx context.Context, in *ListSecretUsesToDecideRequest, opts ...grpc.CallOption) (*ListSecretUsesToDecideResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSecretUsesToDecideResponse)
+	err := c.cc.Invoke(ctx, VaultService_ListSecretUsesToDecide_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1288,6 +1416,9 @@ type VaultServiceServer interface {
 	SimulateSecret(context.Context, *SimulateSecretRequest) (*SimulateSecretResponse, error)
 	// Secrets
 	ListSecretsInFolder(context.Context, *ListSecretsInFolderRequest) (*ListSecretsInFolderResponse, error)
+	// ReorderSecrets sets the manual order of a folder's active secrets. The
+	// caller needs RACI Author on the folder or must own it.
+	ReorderSecrets(context.Context, *ReorderSecretsRequest) (*ReorderSecretsResponse, error)
 	GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error)
 	CreateSecret(context.Context, *CreateSecretRequest) (*CreateSecretResponse, error)
 	UpdateSecret(context.Context, *UpdateSecretRequest) (*UpdateSecretResponse, error)
@@ -1318,6 +1449,13 @@ type VaultServiceServer interface {
 	// Emergency access: bypasses checkout/approval gating for a read-eligible
 	// actor; high-severity audit + owner notify + forced rotation-enqueue.
 	BreakGlassSecret(context.Context, *BreakGlassSecretRequest) (*BreakGlassSecretResponse, error)
+	// Break-glass browse for human site admins: open, check, list, close, and
+	// the audit view of past sessions with their reveals.
+	OpenBreakGlassSession(context.Context, *OpenBreakGlassSessionRequest) (*OpenBreakGlassSessionResponse, error)
+	GetBreakGlassSession(context.Context, *GetBreakGlassSessionRequest) (*GetBreakGlassSessionResponse, error)
+	ListBreakGlassItems(context.Context, *ListBreakGlassItemsRequest) (*ListBreakGlassItemsResponse, error)
+	CloseBreakGlassSession(context.Context, *CloseBreakGlassSessionRequest) (*CloseBreakGlassSessionResponse, error)
+	ListBreakGlassSessions(context.Context, *ListBreakGlassSessionsRequest) (*ListBreakGlassSessionsResponse, error)
 	CopySecret(context.Context, *CopySecretRequest) (*CopySecretResponse, error)
 	// Secret lifecycle: soft-retire (recoverable), restore, and hard delete (permanent).
 	RetireSecret(context.Context, *RetireSecretRequest) (*RetireSecretResponse, error)
@@ -1341,6 +1479,10 @@ type VaultServiceServer interface {
 	ClaimDueRotations(context.Context, *ClaimDueRotationsRequest) (*ClaimDueRotationsResponse, error)
 	RevealForRotation(context.Context, *RevealForRotationRequest) (*RevealForRotationResponse, error)
 	ReportRotation(context.Context, *ReportRotationRequest) (*ReportRotationResponse, error)
+	// Connector builds: each connector's build (from the sneakers-version and
+	// sneakers-commit metadata of its pull calls) and its last contact, for the
+	// gateway's diagnostics. Caller gateway only, as itself.
+	ListConnectors(context.Context, *ListConnectorsRequest) (*ListConnectorsResponse, error)
 	// Instance configuration: password policies + security settings
 	ListPasswordPolicies(context.Context, *ListPasswordPoliciesRequest) (*ListPasswordPoliciesResponse, error)
 	SavePasswordPolicy(context.Context, *SavePasswordPolicyRequest) (*SavePasswordPolicyResponse, error)
@@ -1360,10 +1502,14 @@ type VaultServiceServer interface {
 	// Rotates the active working-KEK: mints a new KEK, activates it, and
 	// sweeps existing records to re-wrap their DEKs under it.
 	RotateKek(context.Context, *RotateKekRequest) (*RotateKekResponse, error)
+	// Seals field sets for an import without storing them (migrate caller only).
+	SealForImport(context.Context, *SealForImportRequest) (*SealForImportResponse, error)
 	PrepareSecretUse(context.Context, *PrepareSecretUseRequest) (*PrepareSecretUseResponse, error)
 	GetSecretUse(context.Context, *GetSecretUseRequest) (*GetSecretUseResponse, error)
 	ListPendingSecretUses(context.Context, *ListPendingSecretUsesRequest) (*ListPendingSecretUsesResponse, error)
 	DecideSecretUse(context.Context, *DecideSecretUseRequest) (*DecideSecretUseResponse, error)
+	ConfirmSecretUse(context.Context, *ConfirmSecretUseRequest) (*ConfirmSecretUseResponse, error)
+	ListSecretUsesToDecide(context.Context, *ListSecretUsesToDecideRequest) (*ListSecretUsesToDecideResponse, error)
 	RedeemSecretUse(context.Context, *RedeemSecretUseRequest) (*RedeemSecretUseResponse, error)
 	CreateUseGrant(context.Context, *CreateUseGrantRequest) (*CreateUseGrantResponse, error)
 	ListUseGrants(context.Context, *ListUseGrantsRequest) (*ListUseGrantsResponse, error)
@@ -1491,6 +1637,9 @@ func (UnimplementedVaultServiceServer) SimulateSecret(context.Context, *Simulate
 func (UnimplementedVaultServiceServer) ListSecretsInFolder(context.Context, *ListSecretsInFolderRequest) (*ListSecretsInFolderResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSecretsInFolder not implemented")
 }
+func (UnimplementedVaultServiceServer) ReorderSecrets(context.Context, *ReorderSecretsRequest) (*ReorderSecretsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReorderSecrets not implemented")
+}
 func (UnimplementedVaultServiceServer) GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSecret not implemented")
 }
@@ -1557,6 +1706,21 @@ func (UnimplementedVaultServiceServer) RestoreSecretVersion(context.Context, *Re
 func (UnimplementedVaultServiceServer) BreakGlassSecret(context.Context, *BreakGlassSecretRequest) (*BreakGlassSecretResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BreakGlassSecret not implemented")
 }
+func (UnimplementedVaultServiceServer) OpenBreakGlassSession(context.Context, *OpenBreakGlassSessionRequest) (*OpenBreakGlassSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method OpenBreakGlassSession not implemented")
+}
+func (UnimplementedVaultServiceServer) GetBreakGlassSession(context.Context, *GetBreakGlassSessionRequest) (*GetBreakGlassSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBreakGlassSession not implemented")
+}
+func (UnimplementedVaultServiceServer) ListBreakGlassItems(context.Context, *ListBreakGlassItemsRequest) (*ListBreakGlassItemsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBreakGlassItems not implemented")
+}
+func (UnimplementedVaultServiceServer) CloseBreakGlassSession(context.Context, *CloseBreakGlassSessionRequest) (*CloseBreakGlassSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CloseBreakGlassSession not implemented")
+}
+func (UnimplementedVaultServiceServer) ListBreakGlassSessions(context.Context, *ListBreakGlassSessionsRequest) (*ListBreakGlassSessionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBreakGlassSessions not implemented")
+}
 func (UnimplementedVaultServiceServer) CopySecret(context.Context, *CopySecretRequest) (*CopySecretResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CopySecret not implemented")
 }
@@ -1611,6 +1775,9 @@ func (UnimplementedVaultServiceServer) RevealForRotation(context.Context, *Revea
 func (UnimplementedVaultServiceServer) ReportRotation(context.Context, *ReportRotationRequest) (*ReportRotationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReportRotation not implemented")
 }
+func (UnimplementedVaultServiceServer) ListConnectors(context.Context, *ListConnectorsRequest) (*ListConnectorsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListConnectors not implemented")
+}
 func (UnimplementedVaultServiceServer) ListPasswordPolicies(context.Context, *ListPasswordPoliciesRequest) (*ListPasswordPoliciesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListPasswordPolicies not implemented")
 }
@@ -1635,6 +1802,9 @@ func (UnimplementedVaultServiceServer) GenerateKeyPair(context.Context, *Generat
 func (UnimplementedVaultServiceServer) RotateKek(context.Context, *RotateKekRequest) (*RotateKekResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RotateKek not implemented")
 }
+func (UnimplementedVaultServiceServer) SealForImport(context.Context, *SealForImportRequest) (*SealForImportResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SealForImport not implemented")
+}
 func (UnimplementedVaultServiceServer) PrepareSecretUse(context.Context, *PrepareSecretUseRequest) (*PrepareSecretUseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PrepareSecretUse not implemented")
 }
@@ -1646,6 +1816,12 @@ func (UnimplementedVaultServiceServer) ListPendingSecretUses(context.Context, *L
 }
 func (UnimplementedVaultServiceServer) DecideSecretUse(context.Context, *DecideSecretUseRequest) (*DecideSecretUseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DecideSecretUse not implemented")
+}
+func (UnimplementedVaultServiceServer) ConfirmSecretUse(context.Context, *ConfirmSecretUseRequest) (*ConfirmSecretUseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConfirmSecretUse not implemented")
+}
+func (UnimplementedVaultServiceServer) ListSecretUsesToDecide(context.Context, *ListSecretUsesToDecideRequest) (*ListSecretUsesToDecideResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSecretUsesToDecide not implemented")
 }
 func (UnimplementedVaultServiceServer) RedeemSecretUse(context.Context, *RedeemSecretUseRequest) (*RedeemSecretUseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RedeemSecretUse not implemented")
@@ -2343,6 +2519,24 @@ func _VaultService_ListSecretsInFolder_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VaultService_ReorderSecrets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReorderSecretsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ReorderSecrets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ReorderSecrets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ReorderSecrets(ctx, req.(*ReorderSecretsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _VaultService_GetSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetSecretRequest)
 	if err := dec(in); err != nil {
@@ -2739,6 +2933,96 @@ func _VaultService_BreakGlassSecret_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VaultService_OpenBreakGlassSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OpenBreakGlassSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).OpenBreakGlassSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_OpenBreakGlassSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).OpenBreakGlassSession(ctx, req.(*OpenBreakGlassSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_GetBreakGlassSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBreakGlassSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).GetBreakGlassSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_GetBreakGlassSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).GetBreakGlassSession(ctx, req.(*GetBreakGlassSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_ListBreakGlassItems_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBreakGlassItemsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ListBreakGlassItems(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ListBreakGlassItems_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ListBreakGlassItems(ctx, req.(*ListBreakGlassItemsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_CloseBreakGlassSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloseBreakGlassSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).CloseBreakGlassSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_CloseBreakGlassSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).CloseBreakGlassSession(ctx, req.(*CloseBreakGlassSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_ListBreakGlassSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBreakGlassSessionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ListBreakGlassSessions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ListBreakGlassSessions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ListBreakGlassSessions(ctx, req.(*ListBreakGlassSessionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _VaultService_CopySecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CopySecretRequest)
 	if err := dec(in); err != nil {
@@ -3063,6 +3347,24 @@ func _VaultService_ReportRotation_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VaultService_ListConnectors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListConnectorsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ListConnectors(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ListConnectors_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ListConnectors(ctx, req.(*ListConnectorsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _VaultService_ListPasswordPolicies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListPasswordPoliciesRequest)
 	if err := dec(in); err != nil {
@@ -3207,6 +3509,24 @@ func _VaultService_RotateKek_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VaultService_SealForImport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SealForImportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).SealForImport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_SealForImport_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).SealForImport(ctx, req.(*SealForImportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _VaultService_PrepareSecretUse_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PrepareSecretUseRequest)
 	if err := dec(in); err != nil {
@@ -3275,6 +3595,42 @@ func _VaultService_DecideSecretUse_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(VaultServiceServer).DecideSecretUse(ctx, req.(*DecideSecretUseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_ConfirmSecretUse_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmSecretUseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ConfirmSecretUse(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ConfirmSecretUse_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ConfirmSecretUse(ctx, req.(*ConfirmSecretUseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_ListSecretUsesToDecide_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSecretUsesToDecideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ListSecretUsesToDecide(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ListSecretUsesToDecide_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ListSecretUsesToDecide(ctx, req.(*ListSecretUsesToDecideRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3593,6 +3949,10 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _VaultService_ListSecretsInFolder_Handler,
 		},
 		{
+			MethodName: "ReorderSecrets",
+			Handler:    _VaultService_ReorderSecrets_Handler,
+		},
+		{
 			MethodName: "GetSecret",
 			Handler:    _VaultService_GetSecret_Handler,
 		},
@@ -3681,6 +4041,26 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _VaultService_BreakGlassSecret_Handler,
 		},
 		{
+			MethodName: "OpenBreakGlassSession",
+			Handler:    _VaultService_OpenBreakGlassSession_Handler,
+		},
+		{
+			MethodName: "GetBreakGlassSession",
+			Handler:    _VaultService_GetBreakGlassSession_Handler,
+		},
+		{
+			MethodName: "ListBreakGlassItems",
+			Handler:    _VaultService_ListBreakGlassItems_Handler,
+		},
+		{
+			MethodName: "CloseBreakGlassSession",
+			Handler:    _VaultService_CloseBreakGlassSession_Handler,
+		},
+		{
+			MethodName: "ListBreakGlassSessions",
+			Handler:    _VaultService_ListBreakGlassSessions_Handler,
+		},
+		{
 			MethodName: "CopySecret",
 			Handler:    _VaultService_CopySecret_Handler,
 		},
@@ -3753,6 +4133,10 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _VaultService_ReportRotation_Handler,
 		},
 		{
+			MethodName: "ListConnectors",
+			Handler:    _VaultService_ListConnectors_Handler,
+		},
+		{
 			MethodName: "ListPasswordPolicies",
 			Handler:    _VaultService_ListPasswordPolicies_Handler,
 		},
@@ -3785,6 +4169,10 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _VaultService_RotateKek_Handler,
 		},
 		{
+			MethodName: "SealForImport",
+			Handler:    _VaultService_SealForImport_Handler,
+		},
+		{
 			MethodName: "PrepareSecretUse",
 			Handler:    _VaultService_PrepareSecretUse_Handler,
 		},
@@ -3799,6 +4187,14 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DecideSecretUse",
 			Handler:    _VaultService_DecideSecretUse_Handler,
+		},
+		{
+			MethodName: "ConfirmSecretUse",
+			Handler:    _VaultService_ConfirmSecretUse_Handler,
+		},
+		{
+			MethodName: "ListSecretUsesToDecide",
+			Handler:    _VaultService_ListSecretUsesToDecide_Handler,
 		},
 		{
 			MethodName: "RedeemSecretUse",
