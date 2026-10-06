@@ -30,6 +30,9 @@ type Broker struct {
 	store  session.TicketStore
 	audit  *audit.Emitter
 	wsBase string
+
+	scanLimit   *scanLimiter
+	scanTimeout time.Duration
 }
 
 // readiness is implemented by a ticket store that can be not ready yet (the
@@ -39,7 +42,7 @@ type readiness interface{ Ready() bool }
 // NewBroker constructs a Broker over the given (shared) ticket store, audit
 // emitter, and base WS URL returned to callers.
 func NewBroker(store session.TicketStore, aud *audit.Emitter, wsBase string) *Broker {
-	return &Broker{store: store, audit: aud, wsBase: wsBase}
+	return &Broker{store: store, audit: aud, wsBase: wsBase, scanLimit: newScanLimiter(), scanTimeout: defaultScanTimeout}
 }
 
 // CreateSession validates the request, creates a pending session ticket, and

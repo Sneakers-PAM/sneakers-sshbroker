@@ -23,6 +23,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	SSHBrokerService_CreateSession_FullMethodName = "/sneakers.sshbroker.v1.SSHBrokerService/CreateSession"
+	SSHBrokerService_ScanHostKey_FullMethodName   = "/sneakers.sshbroker.v1.SSHBrokerService/ScanHostKey"
 )
 
 // SSHBrokerServiceClient is the client API for SSHBrokerService service.
@@ -48,6 +49,12 @@ const (
 //     gateway keeps working during a rollout; prefer the reference form.
 type SSHBrokerServiceClient interface {
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
+	// ScanHostKey connects to a target, reads the host key it offers during
+	// the SSH handshake and returns it. It never authenticates and never opens
+	// a session: the handshake is abandoned as soon as the key arrives. Bounded
+	// by a short timeout and a per-actor rate limit; audited as hostkey.scan
+	// with the SHA256 fingerprint only. People in the web app only.
+	ScanHostKey(ctx context.Context, in *ScanHostKeyRequest, opts ...grpc.CallOption) (*ScanHostKeyResponse, error)
 }
 
 type sSHBrokerServiceClient struct {
@@ -62,6 +69,16 @@ func (c *sSHBrokerServiceClient) CreateSession(ctx context.Context, in *CreateSe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateSessionResponse)
 	err := c.cc.Invoke(ctx, SSHBrokerService_CreateSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sSHBrokerServiceClient) ScanHostKey(ctx context.Context, in *ScanHostKeyRequest, opts ...grpc.CallOption) (*ScanHostKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ScanHostKeyResponse)
+	err := c.cc.Invoke(ctx, SSHBrokerService_ScanHostKey_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +108,12 @@ func (c *sSHBrokerServiceClient) CreateSession(ctx context.Context, in *CreateSe
 //     gateway keeps working during a rollout; prefer the reference form.
 type SSHBrokerServiceServer interface {
 	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
+	// ScanHostKey connects to a target, reads the host key it offers during
+	// the SSH handshake and returns it. It never authenticates and never opens
+	// a session: the handshake is abandoned as soon as the key arrives. Bounded
+	// by a short timeout and a per-actor rate limit; audited as hostkey.scan
+	// with the SHA256 fingerprint only. People in the web app only.
+	ScanHostKey(context.Context, *ScanHostKeyRequest) (*ScanHostKeyResponse, error)
 	mustEmbedUnimplementedSSHBrokerServiceServer()
 }
 
@@ -103,6 +126,9 @@ type UnimplementedSSHBrokerServiceServer struct{}
 
 func (UnimplementedSSHBrokerServiceServer) CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSession not implemented")
+}
+func (UnimplementedSSHBrokerServiceServer) ScanHostKey(context.Context, *ScanHostKeyRequest) (*ScanHostKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ScanHostKey not implemented")
 }
 func (UnimplementedSSHBrokerServiceServer) mustEmbedUnimplementedSSHBrokerServiceServer() {}
 func (UnimplementedSSHBrokerServiceServer) testEmbeddedByValue()                          {}
@@ -143,6 +169,24 @@ func _SSHBrokerService_CreateSession_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SSHBrokerService_ScanHostKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ScanHostKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SSHBrokerServiceServer).ScanHostKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SSHBrokerService_ScanHostKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SSHBrokerServiceServer).ScanHostKey(ctx, req.(*ScanHostKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SSHBrokerService_ServiceDesc is the grpc.ServiceDesc for SSHBrokerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -153,6 +197,10 @@ var SSHBrokerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateSession",
 			Handler:    _SSHBrokerService_CreateSession_Handler,
+		},
+		{
+			MethodName: "ScanHostKey",
+			Handler:    _SSHBrokerService_ScanHostKey_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

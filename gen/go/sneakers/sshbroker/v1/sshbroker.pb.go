@@ -371,6 +371,143 @@ func (x *CreateSessionResponse) GetExpiresInSeconds() int32 {
 	return 0
 }
 
+type ScanHostKeyRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Host        string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Port        int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`                                   // 0 => 22
+	TargetId    string                 `protobuf:"bytes,3,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`            // the vault target being scanned, for audit
+	ActorUserId string                 `protobuf:"bytes,4,opt,name=actor_user_id,json=actorUserId,proto3" json:"actor_user_id,omitempty"` // for audit and the rate limit, NOT authz
+	// Only PRINCIPAL_KIND_HUMAN is accepted; anything else is PermissionDenied.
+	Actor         *ActorContext `protobuf:"bytes,5,opt,name=actor,proto3" json:"actor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScanHostKeyRequest) Reset() {
+	*x = ScanHostKeyRequest{}
+	mi := &file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScanHostKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScanHostKeyRequest) ProtoMessage() {}
+
+func (x *ScanHostKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScanHostKeyRequest.ProtoReflect.Descriptor instead.
+func (*ScanHostKeyRequest) Descriptor() ([]byte, []int) {
+	return file_sneakers_sshbroker_v1_sshbroker_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ScanHostKeyRequest) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *ScanHostKeyRequest) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *ScanHostKeyRequest) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
+}
+
+func (x *ScanHostKeyRequest) GetActorUserId() string {
+	if x != nil {
+		return x.ActorUserId
+	}
+	return ""
+}
+
+func (x *ScanHostKeyRequest) GetActor() *ActorContext {
+	if x != nil {
+		return x.Actor
+	}
+	return nil
+}
+
+type ScanHostKeyResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	KeyType           string                 `protobuf:"bytes,1,opt,name=key_type,json=keyType,proto3" json:"key_type,omitempty"`                               // e.g. ssh-ed25519
+	PublicKey         string                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`                         // authorized_keys form, no comment
+	FingerprintSha256 string                 `protobuf:"bytes,3,opt,name=fingerprint_sha256,json=fingerprintSha256,proto3" json:"fingerprint_sha256,omitempty"` // SHA256:<base64>, as ssh-keygen -l prints it
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ScanHostKeyResponse) Reset() {
+	*x = ScanHostKeyResponse{}
+	mi := &file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScanHostKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScanHostKeyResponse) ProtoMessage() {}
+
+func (x *ScanHostKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScanHostKeyResponse.ProtoReflect.Descriptor instead.
+func (*ScanHostKeyResponse) Descriptor() ([]byte, []int) {
+	return file_sneakers_sshbroker_v1_sshbroker_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ScanHostKeyResponse) GetKeyType() string {
+	if x != nil {
+		return x.KeyType
+	}
+	return ""
+}
+
+func (x *ScanHostKeyResponse) GetPublicKey() string {
+	if x != nil {
+		return x.PublicKey
+	}
+	return ""
+}
+
+func (x *ScanHostKeyResponse) GetFingerprintSha256() string {
+	if x != nil {
+		return x.FingerprintSha256
+	}
+	return ""
+}
+
 var File_sneakers_sshbroker_v1_sshbroker_proto protoreflect.FileDescriptor
 
 const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
@@ -405,14 +542,26 @@ const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
 	"\x06ticket\x18\x02 \x01(\tR\x06ticket\x12\x15\n" +
 	"\x06ws_url\x18\x03 \x01(\tR\x05wsUrl\x12,\n" +
-	"\x12expires_in_seconds\x18\x04 \x01(\x05R\x10expiresInSeconds*\x89\x01\n" +
+	"\x12expires_in_seconds\x18\x04 \x01(\x05R\x10expiresInSeconds\"\xb8\x01\n" +
+	"\x12ScanHostKeyRequest\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1b\n" +
+	"\ttarget_id\x18\x03 \x01(\tR\btargetId\x12\"\n" +
+	"\ractor_user_id\x18\x04 \x01(\tR\vactorUserId\x129\n" +
+	"\x05actor\x18\x05 \x01(\v2#.sneakers.sshbroker.v1.ActorContextR\x05actor\"~\n" +
+	"\x13ScanHostKeyResponse\x12\x19\n" +
+	"\bkey_type\x18\x01 \x01(\tR\akeyType\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\tR\tpublicKey\x12-\n" +
+	"\x12fingerprint_sha256\x18\x03 \x01(\tR\x11fingerprintSha256*\x89\x01\n" +
 	"\rPrincipalKind\x12\x18\n" +
 	"\x14PRINCIPAL_KIND_HUMAN\x10\x00\x12\"\n" +
 	"\x1ePRINCIPAL_KIND_SERVICE_ACCOUNT\x10\x01\x12\x1b\n" +
 	"\x17PRINCIPAL_KIND_WORKLOAD\x10\x02\x12\x1d\n" +
-	"\x19PRINCIPAL_KIND_USER_TOKEN\x10\x032~\n" +
+	"\x19PRINCIPAL_KIND_USER_TOKEN\x10\x032\xe4\x01\n" +
 	"\x10SSHBrokerService\x12j\n" +
-	"\rCreateSession\x12+.sneakers.sshbroker.v1.CreateSessionRequest\x1a,.sneakers.sshbroker.v1.CreateSessionResponseBUZSgithub.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1;sshbrokerv1b\x06proto3"
+	"\rCreateSession\x12+.sneakers.sshbroker.v1.CreateSessionRequest\x1a,.sneakers.sshbroker.v1.CreateSessionResponse\x12d\n" +
+	"\vScanHostKey\x12).sneakers.sshbroker.v1.ScanHostKeyRequest\x1a*.sneakers.sshbroker.v1.ScanHostKeyResponseBUZSgithub.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1;sshbrokerv1b\x06proto3"
 
 var (
 	file_sneakers_sshbroker_v1_sshbroker_proto_rawDescOnce sync.Once
@@ -427,23 +576,28 @@ func file_sneakers_sshbroker_v1_sshbroker_proto_rawDescGZIP() []byte {
 }
 
 var file_sneakers_sshbroker_v1_sshbroker_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_sneakers_sshbroker_v1_sshbroker_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_sneakers_sshbroker_v1_sshbroker_proto_goTypes = []any{
 	(PrincipalKind)(0),            // 0: sneakers.sshbroker.v1.PrincipalKind
 	(*ActorContext)(nil),          // 1: sneakers.sshbroker.v1.ActorContext
 	(*CreateSessionRequest)(nil),  // 2: sneakers.sshbroker.v1.CreateSessionRequest
 	(*CreateSessionResponse)(nil), // 3: sneakers.sshbroker.v1.CreateSessionResponse
+	(*ScanHostKeyRequest)(nil),    // 4: sneakers.sshbroker.v1.ScanHostKeyRequest
+	(*ScanHostKeyResponse)(nil),   // 5: sneakers.sshbroker.v1.ScanHostKeyResponse
 }
 var file_sneakers_sshbroker_v1_sshbroker_proto_depIdxs = []int32{
 	0, // 0: sneakers.sshbroker.v1.ActorContext.principal_kind:type_name -> sneakers.sshbroker.v1.PrincipalKind
 	1, // 1: sneakers.sshbroker.v1.CreateSessionRequest.actor:type_name -> sneakers.sshbroker.v1.ActorContext
-	2, // 2: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:input_type -> sneakers.sshbroker.v1.CreateSessionRequest
-	3, // 3: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:output_type -> sneakers.sshbroker.v1.CreateSessionResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 2: sneakers.sshbroker.v1.ScanHostKeyRequest.actor:type_name -> sneakers.sshbroker.v1.ActorContext
+	2, // 3: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:input_type -> sneakers.sshbroker.v1.CreateSessionRequest
+	4, // 4: sneakers.sshbroker.v1.SSHBrokerService.ScanHostKey:input_type -> sneakers.sshbroker.v1.ScanHostKeyRequest
+	3, // 5: sneakers.sshbroker.v1.SSHBrokerService.CreateSession:output_type -> sneakers.sshbroker.v1.CreateSessionResponse
+	5, // 6: sneakers.sshbroker.v1.SSHBrokerService.ScanHostKey:output_type -> sneakers.sshbroker.v1.ScanHostKeyResponse
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_sneakers_sshbroker_v1_sshbroker_proto_init() }
@@ -457,7 +611,7 @@ func file_sneakers_sshbroker_v1_sshbroker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc), len(file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

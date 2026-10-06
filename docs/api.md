@@ -48,6 +48,7 @@ checked against the allow-list in `internal/grpcsvc/callers.go`:
 | Method | Caller | Access |
 |---|---|---|
 | `CreateSession` | gateway (`<namespace>/sneakers-gateway`) | on behalf: it passes the signed-in user's actor, which the broker forwards to the vault |
+| `ScanHostKey` | gateway (`<namespace>/sneakers-gateway`) | on behalf: the gateway checks the user may change the target's pins before it calls |
 
 No other service may call the broker, and the MCP server never may. A missing or rejected token
 returns `Unauthenticated`, a caller that isn't listed returns `PermissionDenied`, and a verifier
@@ -90,6 +91,27 @@ send the target's port (22 for most targets). `ttl_seconds` 0 or less means 30 s
 
 The response carries `session_id`, the `ticket`, `ws_url` (`SSHBROKER_PUBLIC_WS_URL`) and
 `expires_in_seconds`. A `session.start` audit event is sent before the response.
+
+### ScanHostKey
+
+Reads the host key a target offers, so a person can see its fingerprint before pinning it. It needs
+`host`, `target_id` (the vault target, for the audit event) and `actor_user_id` (the user, for the
+audit event and the rate limit); `port` 0 means 22, and anything outside 1 to 65535 returns
+`InvalidArgument`. The broker connects and runs the SSH handshake only as far as the host key,
+then drops the connection: it never sends an authentication request, so no credential is used and
+the target records no login attempt. The whole scan, connect included, is bounded by 5 seconds.
+
+The response carries `key_type` (`ssh-ed25519`, say), `public_key` in authorized_keys form with no
+comment, and `fingerprint_sha256` (`SHA256:<base64>`, as `ssh-keygen -l` prints it). A target that
+can't be reached, or that offers no host key in time, returns `Unavailable`.
+
+The broker only reports what the target offered. It pins nothing: the gateway pins a key only
+when the person confirms the exact fingerprint they were shown and a fresh scan still returns it.
+
+So the broker can't be driven as a port scanner, each `actor_user_id` gets 5 scans back to back,
+refilled one every 12 seconds; past that the call returns `ResourceExhausted`. As with
+`CreateSession`, any `actor.principal_kind` but `PRINCIPAL_KIND_HUMAN` returns `PermissionDenied`.
+Every call that gets past the input checks sends a `hostkey.scan` audit event.
 
 ## WebSocket
 
@@ -146,6 +168,7 @@ session carries on. No key material is ever put in an event.
 | `session.start` | `CreateSession` | `host`, `target_id` |
 | `session.refuse` | `CreateSession` refused for its principal kind, or any call refused by the caller check | `target_id`, `reason`, and `principal_kind`, or `caller`, `method` and `code` |
 | `session.end` | the session ends, or fails at any point after its ticket was consumed (a host-key refusal included, with its reason) | `target_id`, `duration_ms`, `reason` |
+| `hostkey.scan` | `ScanHostKey`, with the target id as the subject and not marked sensitive (no secret is involved) | `target_id`, `host`, `outcome` (`ok`, `refused`, `rate_limited`, `unreachable` or `handshake_failed`), and `port`, `key_type`, `fingerprint_sha256` or `principal_kind` as they apply; never the key itself |
 
 ## Workload authentication
 
