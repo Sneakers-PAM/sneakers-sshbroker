@@ -9,6 +9,7 @@ import (
 
 	"github.com/Bugs5382/go-buildinfo/health"
 	log "github.com/Bugs5382/go-log"
+	workloadauth "github.com/Bugs5382/go-workload-identity"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	"google.golang.org/grpc"
@@ -47,7 +48,7 @@ func TestReadinessDeps_ValkeyRequiredPeersOptional(t *testing.T) {
 	store := session.NewRequiredComposite(session.NewStore())
 	defer store.Close()
 	down := peer{healthpb.HealthCheckResponse_NOT_SERVING}
-	r := checker(t, readinessDeps(store, true, down, down)).Report(context.Background())
+	r := checker(t, readinessDeps(store, true, down, down, nil)).Report(context.Background())
 	got := states(r)
 	if r.Status != health.StateDown || got["valkey"].State != health.StateDown || !got["valkey"].Required || got["valkey"].Error != "unavailable" {
 		t.Fatalf("valkey not attached: %+v", r)
@@ -63,8 +64,30 @@ func TestReadinessDeps_NoRedisNoValkey(t *testing.T) {
 	store := session.NewComposite(session.NewStore(), nil)
 	defer store.Close()
 	up := peer{healthpb.HealthCheckResponse_SERVING}
-	r := checker(t, readinessDeps(store, false, up, up)).Report(context.Background())
+	r := checker(t, readinessDeps(store, false, up, up, nil)).Report(context.Background())
 	if _, has := states(r)["valkey"]; has || r.Status != health.StateOK || len(r.Dependencies) != 2 {
 		t.Fatalf("%+v", r)
+	}
+}
+
+// TestReadinessDeps_WorkloadIdentityRequiredWhenAuthenticationIsOn: no caller
+// can be checked before the issuer's key set has loaded, so the verifier is
+// a required dependency once it exists, and absent when authentication is
+// disabled (verifier nil).
+func TestReadinessDeps_WorkloadIdentityRequiredWhenAuthenticationIsOn(t *testing.T) {
+	store := session.NewComposite(session.NewStore(), nil)
+	defer store.Close()
+	up := peer{healthpb.HealthCheckResponse_SERVING}
+	verifier, err := workloadauth.NewVerifier(workloadauth.Config{
+		Issuer: "https://issuer.example.test", Audience: "sneakers",
+		AllowedServiceAccounts: []string{"sneakers/sneakers-gateway"},
+	}, log.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := checker(t, readinessDeps(store, false, up, up, verifier)).Report(context.Background())
+	got := states(r)
+	if _, has := got["workload-identity"]; !has || !got["workload-identity"].Required {
+		t.Fatalf("workload-identity must be a required dependency: %+v", r)
 	}
 }

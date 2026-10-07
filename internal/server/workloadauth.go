@@ -4,8 +4,10 @@
 package server
 
 import (
+	"context"
 	"strings"
 
+	"github.com/Bugs5382/go-buildinfo/health"
 	workloadauth "github.com/Bugs5382/go-workload-identity"
 )
 
@@ -45,4 +47,20 @@ func withWorkloadAudience(getenv func(string) string) func(string) string {
 		}
 		return getenv(k)
 	}
+}
+
+// ReadinessVerifier reports whether a caller verifier's key set has loaded,
+// the contract go-workload-identity's Verifier.Ready gives.
+type ReadinessVerifier interface {
+	Ready() error
+}
+
+// WorkloadIdentity is the required dependency over a caller verifier: no
+// caller can be checked before its key set has loaded, so readiness answers
+// NOT_SERVING until then (see go-workload-identity's Verifier.Ready). Callers
+// build it only when service-to-service authentication is on.
+func WorkloadIdentity(v ReadinessVerifier) health.Dependency {
+	return health.Dependency{Name: "workload-identity", Required: true, Check: func(context.Context) error {
+		return v.Ready()
+	}}
 }
