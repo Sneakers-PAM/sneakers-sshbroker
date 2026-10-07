@@ -9,9 +9,9 @@ import (
 	log "github.com/Bugs5382/go-log"
 	"google.golang.org/grpc"
 
+	workloadauth "github.com/Bugs5382/go-workload-identity"
 	sshbrokerv1 "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/audit"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/workloadauth"
 )
 
 // CallerGateway is the only caller of the broker's gRPC API: the gateway,

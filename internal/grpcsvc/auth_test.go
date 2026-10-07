@@ -26,10 +26,11 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	workloadauth "github.com/Bugs5382/go-workload-identity"
 	sshbrokerv1 "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/audit"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/workloadauth"
 )
 
 const testNS = "sneakers"
@@ -89,6 +90,7 @@ func startAuthedBroker(t *testing.T, iss *issuer, allowed []string, rec *recordi
 	v, err := workloadauth.NewVerifier(workloadauth.Config{
 		Issuer: iss.url, JWKSURL: iss.url + "/openid/v1/jwks", CAFile: iss.caFile,
 		AllowedServiceAccounts: allowed,
+		Audience:               server.WorkloadAudience, ServiceAccountPrefix: server.WorkloadServiceAccountPrefix,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

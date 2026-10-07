@@ -41,8 +41,8 @@ canonicalized (`Sneakers-Version`). The gateway's diagnostics read them.
 
 ### Callers
 
-Every call is authenticated with the caller's Kubernetes workload identity (the shared
-`internal/workloadauth` package; see [Workload authentication](#workload-authentication)), then
+Every call is authenticated with the caller's Kubernetes workload identity (the
+`github.com/Bugs5382/go-workload-identity` package; see [Workload authentication](#workload-authentication)), then
 checked against the allow-list in `internal/grpcsvc/callers.go`:
 
 | Method | Caller | Access |
@@ -177,10 +177,9 @@ service-account token (audience `sneakers`) named by `WORKLOAD_TOKEN_FILE`, sent
 `authorization: Bearer <token>` and read again on every call. The vault lists the broker as an
 on-behalf caller of `RevealSecretField` only.
 
-`internal/workloadauth` is a byte-for-byte copy of the package in `Sneakers-PAM/sneakers-vault`
-at `SNEAKERS_VAULT_REF`. Build & Test runs `scripts/workloadauth-check.sh`, which fails when the
-copy differs. To take a new version, bump the ref and copy the vault's `internal/workloadauth/`
-over this one in the same change. Never edit the copy here.
+The token checks, the interceptors and the caller credentials come from the owner's helper package
+`github.com/Bugs5382/go-workload-identity`, the same release every Sneakers service imports; a
+new version arrives as a `go.mod` bump.
 
 ## Calling other services
 
