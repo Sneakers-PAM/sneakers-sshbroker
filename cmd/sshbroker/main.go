@@ -22,12 +22,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	workloadauth "github.com/Bugs5382/go-workload-identity"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/audit"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/grpcsvc"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/vault"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/workloadauth"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/wsproxy"
 )
 
@@ -136,7 +136,7 @@ func callerDialOptions() []grpc.DialOption {
 func workloadAuth(ctx context.Context, aud *audit.Emitter) []grpc.ServerOption {
 	logger := log.New(serviceName)
 	lg := log.NewLogger(serviceName)
-	cfg, enabled, err := workloadauth.ServerConfigFromEnv(os.Getenv)
+	cfg, enabled, err := server.WorkloadConfigFromEnv(os.Getenv)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("workload authentication")
 	}

@@ -27,10 +27,9 @@ every session is bounded by liveness checks and a maximum length. Keep it that w
 - `internal/safeconv/` - the bounds-checked int to int32 conversion.
 - `internal/server/` - the gRPC server bootstrap and the HTTP health routes, with the health
   service and readiness checks from `github.com/Bugs5382/go-buildinfo`.
-- `internal/workloadauth/` - service-to-service workload authentication, a byte-for-byte copy of
-  the package in sneakers-vault at `SNEAKERS_VAULT_REF` (checked by `scripts/workloadauth-check.sh`).
-  Never edit it here: change it in the vault, then copy it again. The broker's allow-list is
-  `internal/grpcsvc/callers.go`.
+- Service-to-service workload authentication comes from `github.com/Bugs5382/go-workload-identity`;
+  `internal/server/workloadauth.go` sets the Sneakers audience and caller-name prefix. The broker's
+  allow-list is `internal/grpcsvc/callers.go`.
 - `proto/` - the API; `gen/go/` - the generated Go (committed, checked current in CI).
 - `docs/` - configuration, API and runbook.
 
@@ -85,6 +84,3 @@ Follow the logging rules in `CLAUDE.md`. In short:
   `use . ../go-<pkg>`); `go.work` and `go.work.sum` are in `.gitignore`. For local callee protos,
   point `SNEAKERS_AUDIT_PROTO_DIR` and `SNEAKERS_VAULT_PROTO_DIR` at a local `proto/` directory when
   running `scripts/proto-generate.sh`, rather than editing a pin in `proto-refs.env`.
-  `SNEAKERS_VAULT_REF` is also the sneakers-vault commit `internal/workloadauth/` is copied from;
-  `SNEAKERS_VAULT_DIR` points `scripts/workloadauth-check.sh` at a local sneakers-vault checkout
-  instead.

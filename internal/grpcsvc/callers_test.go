@@ -6,8 +6,8 @@ package grpcsvc
 import (
 	"testing"
 
+	workloadauth "github.com/Bugs5382/go-workload-identity"
 	sshbrokerv1 "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/sshbroker/v1"
-	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/workloadauth"
 )
 
 // TestCallerPolicy: only the gateway may call CreateSession, on behalf of the

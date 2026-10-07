@@ -21,7 +21,12 @@ log JSON, at `debug` in a dev cluster, `info` in QA or staging and `error` in pr
 ## Workload authentication
 
 The gRPC API takes calls only from authenticated workloads (see [API](api.md#callers)). The
-settings are those of the shared `internal/workloadauth` package:
+settings are those of the owner's helper package
+[`github.com/Bugs5382/go-workload-identity`](https://github.com/Bugs5382/go-workload-identity)
+(v1.0.0), which every Sneakers service imports in place of its old private copy.
+`internal/server/workloadauth.go` sets the Sneakers values the package has no default for: the
+audience `sneakers` when `WORKLOAD_AUDIENCE` is unset, and the caller-name prefix `sneakers-`
+(`WORKLOAD_SERVICEACCOUNT_PREFIX` is not read).
 
 | Variable | Default | Purpose |
 |---|---|---|
