@@ -128,12 +128,13 @@ func callerDialOptions() []grpc.DialOption {
 	return append(opts, tok)
 }
 
-// workloadAuth returns the gRPC server options that check each caller's
-// workload token against grpcsvc.CallerPolicy (only the gateway may call
-// CreateSession). It fails closed: with no WORKLOAD_OIDC_ISSUER the start
-// fails unless WORKLOAD_AUTH=disabled, which trusts every caller and is for
-// local development only.
-func workloadAuth(ctx context.Context, aud *audit.Emitter) []grpc.ServerOption {
+// workloadAuth returns the verifier it built (nil when authentication is
+// disabled, for readiness) and the gRPC server options that check each
+// caller's workload token against grpcsvc.CallerPolicy (only the gateway may
+// call CreateSession). It fails closed: with no WORKLOAD_OIDC_ISSUER the
+// start fails unless WORKLOAD_AUTH=disabled, which trusts every caller and is
+// for local development only.
+func workloadAuth(ctx context.Context, aud *audit.Emitter) (*workloadauth.Verifier, []grpc.ServerOption) {
 	logger := log.New(serviceName)
 	lg := log.NewLogger(serviceName)
 	cfg, enabled, err := server.WorkloadConfigFromEnv(os.Getenv)
@@ -142,7 +143,7 @@ func workloadAuth(ctx context.Context, aud *audit.Emitter) []grpc.ServerOption {
 	}
 	if !enabled {
 		go workloadauth.WarnDisabled(ctx, lg, workloadauth.DisabledWarnInterval)
-		return nil
+		return nil, nil
 	}
 	v, err := workloadauth.NewVerifier(cfg, lg)
 	if err != nil {
@@ -151,7 +152,7 @@ func workloadAuth(ctx context.Context, aud *audit.Emitter) []grpc.ServerOption {
 	go v.Run(ctx)
 	logger.Info().Str("issuer", cfg.Issuer).Strs("allowed", cfg.AllowedServiceAccounts).
 		Msg("workload authentication on; CreateSession takes the gateway only")
-	return grpcsvc.AuthServerOptions(v, aud, lg)
+	return v, grpcsvc.AuthServerOptions(v, aud, lg)
 }
 
 func main() {
@@ -193,6 +194,10 @@ func main() {
 	defer func() { _ = auditConn.Close() }()
 	auditEmitter := audit.New(auditv1.NewAuditServiceClient(auditConn))
 
+	// Built before the checker so a non-nil verifier can be followed by
+	// readiness too; the options are reused when the server starts.
+	workloadVerifier, authOpts := workloadAuth(ctx, auditEmitter)
+
 	// Vault client for the reference path: the redeeming pod reveals the SSH key
 	// from the vault (RevealSecretField, audited) with the ticket's actor at
 	// connect time, so key material is never carried in the shared ticket store.
@@ -207,7 +212,7 @@ func main() {
 	// Readiness: the gRPC health check (service "") and /readyz follow these;
 	// service "liveness" and /livez check the process only.
 	checker, err := server.NewChecker(log.NewLogger(serviceName), readinessDeps(store, os.Getenv("REDIS_URL") != "",
-		healthpb.NewHealthClient(vaultConn), healthpb.NewHealthClient(auditConn)))
+		healthpb.NewHealthClient(vaultConn), healthpb.NewHealthClient(auditConn), workloadVerifier))
 	if err != nil {
 		logger.Fatal().Err(err).Msg("health checker")
 	}
@@ -249,7 +254,7 @@ func main() {
 	logger.Info().Str("grpc", grpcPort).Msg("starting sshbroker")
 	if err := server.RunWithHealth(ctx, grpcPort, checker, func(gs *grpc.Server) {
 		grpcsvc.RegisterServer(gs, broker)
-	}, workloadAuth(ctx, auditEmitter)...); err != nil {
+	}, authOpts...); err != nil {
 		logger.Fatal().Err(err).Msg("server exited")
 	}
 }

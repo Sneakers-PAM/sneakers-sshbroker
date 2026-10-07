@@ -39,6 +39,11 @@ audience `sneakers` when `WORKLOAD_AUDIENCE` is unset, and the caller-name prefi
 | `WORKLOAD_AUTH` | unset | `disabled` turns the check off and trusts every caller, with a warning every 5 minutes. Local development only; no other value is accepted, and it can't be set together with the issuer. |
 | `WORKLOAD_TOKEN_FILE` | unset | The broker's own projected token (`/var/run/secrets/sneakers/token` in the charts), sent on its calls to the vault and audit and read again on every call. Unset, those calls carry no token. A set path that can't be read stops the start. |
 
+No caller can be checked before the issuer's key set has loaded, so readiness waits for it too:
+`/readyz` and the gRPC health check answer `NOT_SERVING`, with `workload-identity` reported down
+in the readiness body (`server.WorkloadIdentity`, checking `Verifier.Ready`), until then. It's
+left out of the readiness body when `WORKLOAD_AUTH=disabled`. Liveness is unaffected.
+
 ## Fixed limits
 
 These are constants in the code, not settings:

@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/Bugs5382/go-buildinfo/health"
+	workloadauth "github.com/Bugs5382/go-workload-identity"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 	"google.golang.org/grpc/codes"
@@ -23,7 +24,9 @@ import (
 //     it, so its outage degrades the broker rather than taking it out.
 //   - audit: optional. Session events are best effort; a session never fails
 //     because audit is down.
-func readinessDeps(store *session.Composite, redisSet bool, vault, audit server.HealthChecker) []health.Dependency {
+//   - workload-identity (only when service-to-service authentication is on):
+//     required. No caller can be checked before its key set has loaded.
+func readinessDeps(store *session.Composite, redisSet bool, vault, audit server.HealthChecker, workloadVerifier *workloadauth.Verifier) []health.Dependency {
 	var deps []health.Dependency
 	if redisSet {
 		deps = append(deps, health.Dependency{Name: "valkey", Required: true, Check: func(ctx context.Context) error {
@@ -34,8 +37,12 @@ func readinessDeps(store *session.Composite, redisSet bool, vault, audit server.
 			return err
 		}})
 	}
-	return append(deps,
+	deps = append(deps,
 		health.Dependency{Name: "vault", Check: server.GRPCPeer(vault)},
 		health.Dependency{Name: "audit", Check: server.GRPCPeer(audit)},
 	)
+	if workloadVerifier != nil {
+		deps = append(deps, server.WorkloadIdentity(workloadVerifier))
+	}
+	return deps
 }
