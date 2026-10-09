@@ -79,13 +79,16 @@ func (f *flakyJWKS) verifier(t *testing.T) *workloadauth.Verifier {
 	return v
 }
 
-var fastKeyRefresh = KeyRefresh{Initial: 10 * time.Millisecond, Max: 40 * time.Millisecond, Interval: time.Hour}
-
-// TestRunWorkloadKeys_RetriesUntilTheFirstSetLoads: the first JWKS fetches
-// fail (the pod network still coming up), a later one succeeds, and readiness
-// becomes SERVING without a restart.
-func TestRunWorkloadKeys_RetriesUntilTheFirstSetLoads(t *testing.T) {
-	f := newFlakyJWKS(t, 3)
+// TestWorkloadAuthRun_ComesUpWhenTheFirstJWKSFetchFailsThenSucceeds drives
+// the broker's own readiness wiring (NewChecker plus WorkloadIdentity) over
+// go-workload-identity's public Verifier.Run, the same call main.go makes.
+// go-workload-identity v1.0.1 retries the first fetch itself (backoff from 1
+// second to 30 seconds), so the broker turns ready without a restart and
+// without any local retry loop of its own. The backoff schedule is not
+// configurable from outside the package, so this waits on the real timing
+// (two failures: about 1s then 2s) rather than a shortened one.
+func TestWorkloadAuthRun_ComesUpWhenTheFirstJWKSFetchFailsThenSucceeds(t *testing.T) {
+	f := newFlakyJWKS(t, 2)
 	v := f.verifier(t)
 	c, err := NewChecker(log.Nop(), []health.Dependency{WorkloadIdentity(v)}, health.WithTTL(time.Millisecond))
 	if err != nil {
@@ -96,9 +99,9 @@ func TestRunWorkloadKeys_RetriesUntilTheFirstSetLoads(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go RunWorkloadKeys(ctx, v, fastKeyRefresh, f.srv.URL, log.Nop())
+	go v.Run(ctx)
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for {
 		r := c.Report(context.Background())
 		if r.Status == health.StateOK {
@@ -107,32 +110,9 @@ func TestRunWorkloadKeys_RetriesUntilTheFirstSetLoads(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("readiness never turned SERVING after %d fetches: %+v", f.hits.Load(), r)
 		}
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
-	if got := f.hits.Load(); got < 4 {
-		t.Fatalf("fetches = %d, want the 3 failures and a success", got)
-	}
-}
-
-// TestRunWorkloadKeys_RefreshesPeriodicallyOnceLoaded: after the set loads,
-// the retries stop and the periodic refresh takes over.
-func TestRunWorkloadKeys_RefreshesPeriodicallyOnceLoaded(t *testing.T) {
-	f := newFlakyJWKS(t, 0)
-	v := f.verifier(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	p := fastKeyRefresh
-	p.Interval = 20 * time.Millisecond
-	go RunWorkloadKeys(ctx, v, p, f.srv.URL, log.Nop())
-
-	deadline := time.Now().Add(5 * time.Second)
-	for f.hits.Load() < 3 {
-		if time.Now().After(deadline) {
-			t.Fatalf("periodic refresh: %d fetches", f.hits.Load())
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if err := v.Ready(); err != nil {
-		t.Fatal(err)
+	if got := f.hits.Load(); got < 3 {
+		t.Fatalf("fetches = %d, want the 2 failures and a success", got)
 	}
 }

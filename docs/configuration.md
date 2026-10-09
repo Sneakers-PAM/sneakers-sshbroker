@@ -44,12 +44,11 @@ No caller can be checked before the issuer's key set has loaded, so readiness wa
 in the readiness body (`server.WorkloadIdentity`, checking `Verifier.Ready`), until then. It's
 left out of the readiness body when `WORKLOAD_AUTH=disabled`. Liveness is unaffected.
 
-The broker loads the key set with `server.RunWorkloadKeys` rather than the package's
-`Verifier.Run`. While no set has loaded (a first fetch that times out while the pod network
-comes up, say) it retries with backoff from 1 second doubling to 30 seconds, logging each failed
-attempt at debug (target, attempt, outcome, duration) and the recovery at info, so readiness
-turns `SERVING` as soon as a fetch succeeds, with no restart. After that the set is refetched
-every 15 minutes, and a failed refresh keeps the last good set.
+The broker loads the key set with the package's own `Verifier.Run`. While no set has loaded (a
+first fetch that times out while the pod network comes up, say) it retries with backoff from 1
+second doubling to 30 seconds, so readiness turns `SERVING` as soon as a fetch succeeds, with no
+restart. After that the set is refetched every 15 minutes, and a failed refresh keeps the last
+good set.
 
 ## Fixed limits
 
