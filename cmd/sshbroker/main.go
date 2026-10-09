@@ -47,6 +47,26 @@ func otlpEndpoint(getenv func(string) string) string {
 	return getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 }
 
+// redisOptionsFrom turns a parsed REDIS_URL into bredis.Options, honouring
+// every field go-redis's ParseURL populates that bredis can express:
+// address, DB, password and TLS (rediss://, or the sentinel/cluster
+// variants' tls query params). Username has no WithUsername counterpart in
+// go-redis (the owner's helper package), so rather than silently drop it
+// and connect with the wrong identity, an error is returned instead.
+func redisOptionsFrom(opt *goredis.Options) ([]bredis.Option, error) {
+	if opt.Username != "" {
+		return nil, errors.New("REDIS_URL sets a username, which this broker can't honour")
+	}
+	ropts := []bredis.Option{bredis.WithAddr(opt.Addr), bredis.WithDB(opt.DB)}
+	if opt.Password != "" {
+		ropts = append(ropts, bredis.WithPassword(opt.Password))
+	}
+	if opt.TLSConfig != nil {
+		ropts = append(ropts, bredis.WithTLS(opt.TLSConfig))
+	}
+	return ropts, nil
+}
+
 // newTicketStore builds the ticket store from REDIS_URL.
 //
 //   - Unset: in-memory tickets only, so run one replica. The broker is ready
@@ -73,9 +93,9 @@ func newTicketStore(ctx context.Context, local *session.Store, onReady func()) *
 	if err != nil {
 		logger.Fatal().Err(err).Msg("REDIS_URL invalid")
 	}
-	ropts := []bredis.Option{bredis.WithAddr(opt.Addr), bredis.WithDB(opt.DB)}
-	if opt.Password != "" {
-		ropts = append(ropts, bredis.WithPassword(opt.Password))
+	ropts, err := redisOptionsFrom(opt)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("REDIS_URL option unsupported")
 	}
 	connect := func(ctx context.Context) (session.TicketStore, error) {
 		dctx, cancel := context.WithTimeout(ctx, 5*time.Second)
