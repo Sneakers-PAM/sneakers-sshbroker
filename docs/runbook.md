@@ -31,7 +31,9 @@ At start the service:
    the workload token from `WORKLOAD_TOKEN_FILE` when it's set; both connect lazily, on the first
    call;
 5. reads the workload authentication settings and starts loading the issuer's keys in the
-   background (until they load, gRPC calls other than health get `Unavailable`);
+   background (until they load, gRPC calls other than health get `Unavailable` and readiness is
+   `NOT_SERVING`; a failed fetch is retried from 1 second doubling to 30 seconds, so the broker
+   turns ready by itself once the issuer answers);
 6. serves HTTP on `HTTP_PORT` and gRPC on `GRPC_PORT`.
 
 A failure in step 2 or a gRPC server error is logged at fatal level and the process exits
