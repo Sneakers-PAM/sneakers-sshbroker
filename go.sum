@@ -6,8 +6,8 @@ github.com/Bugs5382/go-otel v1.3.2 h1:RNedETq9P9RFpxfJf8VWYQlBkqdf0RA8is8Oh8RdyT
 github.com/Bugs5382/go-otel v1.3.2/go.mod h1:UY0zaCYcarZQwgG+LONwwv224wpVueE6Yr2uuO3+7TU=
 github.com/Bugs5382/go-redis v1.2.0 h1:86yqK9NlZNhnglRaxFZdNV9o58+kAgwyfaoIW9WjaVc=
 github.com/Bugs5382/go-redis v1.2.0/go.mod h1:yyz0EuremryinY7TqW49ViZZX/Vbdvjvri1w1n9vthY=
-github.com/Bugs5382/go-workload-identity v1.0.0 h1:XEg8Byo7VH6Mb+Fv0kJEdUCiZXX9DG/BuGSsD2oNHgI=
-github.com/Bugs5382/go-workload-identity v1.0.0/go.mod h1:9IEkIsg3BqcmhT7fV9uO/EWp3VF1b7PYBFrX7x3sN/8=
+github.com/Bugs5382/go-workload-identity v1.0.1 h1:QRYOTohudQXO2AS3nU/FFyaq8LaIBCtVYNj9WGfrAdA=
+github.com/Bugs5382/go-workload-identity v1.0.1/go.mod h1:IICUaNuHp//d2wZhOh6SM4NFT9DU8VeBzz/f68s0ekA=
 github.com/alicebob/miniredis/v2 v2.38.0 h1:nZAzCR+Lj+Vxk4ZXzm2NuKq2O33RXj1XxJ2e2uP9jiw=
 github.com/alicebob/miniredis/v2 v2.38.0/go.mod h1:TcL7YfarKPGDAthEtl5NBeHZfeUQj6OXMm/+iu5cLMM=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=

@@ -149,11 +149,7 @@ func workloadAuth(ctx context.Context, aud *audit.Emitter) (*workloadauth.Verifi
 	if err != nil {
 		logger.Fatal().Err(err).Msg("workload verifier")
 	}
-	target := cfg.JWKSURL
-	if target == "" {
-		target = cfg.Issuer
-	}
-	go server.RunWorkloadKeys(ctx, v, server.DefaultKeyRefresh, target, lg)
+	go v.Run(ctx)
 	logger.Info().Str("issuer", cfg.Issuer).Strs("allowed", cfg.AllowedServiceAccounts).
 		Msg("workload authentication on; CreateSession takes the gateway only")
 	return v, grpcsvc.AuthServerOptions(v, aud, lg)
