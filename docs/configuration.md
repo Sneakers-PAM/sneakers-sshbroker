@@ -11,7 +11,7 @@ The service reads its configuration from the environment. Every setting has a de
 | `REDIS_URL` | unset | Redis for the shared reference-ticket store, as a `redis://[:password@]host:port/db` URL. Unset means in-memory tickets only (one replica), with a warning. Set, every reference ticket goes to Redis and never to memory: if Redis isn't answering, the broker keeps trying (1 second, doubling to 30 seconds) and stays not ready until it does. Malformed stops the start. Only the address, database number and password are used: TLS and other URL options are not applied. Keep the password in your secret store and inject the URL at run time. |
 | `VAULT_ADDR` | `localhost:9091` | `host:port` of the vault service's gRPC API, used to reveal the key for a reference ticket. The connection is plaintext and made lazily. |
 | `AUDIT_ADDR` | `localhost:9194` | `host:port` of the audit service's gRPC API, for the session start and end events. The connection is plaintext and made lazily. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `localhost:4317` | OTLP gRPC endpoint for traces and metrics (plaintext). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (no export) | OTLP gRPC endpoint for traces and metrics (plaintext). Unset or empty disables export cleanly; set it to opt in. |
 | `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `panic` or `disabled`. |
 | `LOG_FORMAT` | `json` | `json`, `console` (or `pretty`), or `both` (JSON on stdout, console on stderr). |
 

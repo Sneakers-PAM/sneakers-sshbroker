@@ -40,6 +40,13 @@ func env(k, def string) string {
 	return def
 }
 
+// otlpEndpoint reads OTEL_EXPORTER_OTLP_ENDPOINT with no default: unset or
+// empty means no collector, which go-otel's Init treats as export-off
+// (local-only providers, no exporter, no periodic export errors).
+func otlpEndpoint(getenv func(string) string) string {
+	return getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+}
+
 // newTicketStore builds the ticket store from REDIS_URL.
 //
 //   - Unset: in-memory tickets only, so run one replica. The broker is ready
@@ -163,7 +170,7 @@ func main() {
 	grpcPort := env("GRPC_PORT", "9096")
 	httpPort := env("HTTP_PORT", "9097")
 
-	otelShutdown, err := otel.Init(ctx, serviceName, env("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"))
+	otelShutdown, err := otel.Init(ctx, serviceName, otlpEndpoint(os.Getenv))
 	if err != nil {
 		logger.Fatal().Err(err).Msg("otel init")
 	}
