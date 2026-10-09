@@ -143,7 +143,7 @@ func TestHandlerEchoesSSHSession(t *testing.T) {
 	defer stop()
 
 	store := newTestStore(t)
-	_, ticket, _ := store.Create(session.Params{
+	_, ticket, _, _ := store.Create(session.Params{
 		Host:       host,
 		Port:       int32(port),
 		Username:   "tester",
@@ -185,7 +185,7 @@ func TestHandlerResizeControlFrameDoesNotBreakEcho(t *testing.T) {
 	defer stop()
 
 	store := newTestStore(t)
-	_, ticket, _ := store.Create(session.Params{
+	_, ticket, _, _ := store.Create(session.Params{
 		Host:       host,
 		Port:       int32(port),
 		Username:   "tester",
@@ -245,7 +245,7 @@ func TestHandlerRemovesAndZeroizesSessionOnClose(t *testing.T) {
 	defer stop()
 
 	store := newTestStore(t)
-	id, ticket, _ := store.Create(session.Params{
+	id, ticket, _, _ := store.Create(session.Params{
 		Host:       host,
 		Port:       int32(port),
 		Username:   "tester",
@@ -289,7 +289,7 @@ func TestHandlerRejectsWrongClientKey(t *testing.T) {
 	defer stop()
 
 	store := newTestStore(t)
-	id, ticket, _ := store.Create(session.Params{
+	id, ticket, _, _ := store.Create(session.Params{
 		Host:       host,
 		Port:       int32(port),
 		Username:   "tester",
@@ -338,7 +338,7 @@ func TestHandlerTearsDownHungPeerWithinDeadline(t *testing.T) {
 	defer stop()
 
 	store := newTestStore(t)
-	id, ticket, _ := store.Create(session.Params{
+	id, ticket, _, _ := store.Create(session.Params{
 		Host:       host,
 		Port:       int32(port),
 		Username:   "tester",

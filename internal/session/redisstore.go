@@ -59,7 +59,7 @@ func NewRedisStore(c *bredis.Client) *RedisStore {
 // expiry. Any inline key material in Params is deliberately ignored: this store
 // never persists a private key. Callers route inline-key sessions to the
 // in-memory Store instead (see Composite).
-func (r *RedisStore) Create(p Params) (id, ticket string, expiresIn int) {
+func (r *RedisStore) Create(p Params) (id, ticket string, expiresIn int, err error) {
 	ttl := p.TTL
 	if ttl <= 0 {
 		ttl = r.ttl
@@ -85,13 +85,15 @@ func (r *RedisStore) Create(p Params) (id, ticket string, expiresIn int) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), redisOpTimeout)
 	defer cancel()
-	// A Set failure just means no ticket is stored; the browser then fails the
-	// redeem with "invalid or expired ticket" (fail-closed). We do not surface
-	// the error through the context-free interface, matching the in-memory
-	// Store which likewise cannot fail Create.
-	_ = r.rdb.Set(ctx, ticketKeyPrefix+ticket, blob, ttl).Err()
+	// A Set failure means no ticket is stored in Redis: returning it anyway
+	// would hand the browser a ticket that can never be redeemed (a 403 with
+	// nothing in the broker's log explaining why). Surface the error instead
+	// so the caller can fail the gRPC call closed.
+	if err := r.rdb.Set(ctx, ticketKeyPrefix+ticket, blob, ttl).Err(); err != nil {
+		return "", "", 0, err
+	}
 
-	return id, ticket, int(ttl / time.Second)
+	return id, ticket, int(ttl / time.Second), nil
 }
 
 // Consume atomically fetches-and-deletes the ticket (GETDEL), guaranteeing

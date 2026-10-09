@@ -41,7 +41,10 @@ non-zero, and so does a malformed `REDIS_URL`, a malformed or missing workload a
 setting (no `WORKLOAD_OIDC_ISSUER` without `WORKLOAD_AUTH=disabled`), or an unreadable
 `WORKLOAD_TOKEN_FILE`. With `REDIS_URL` unset the broker logs one warning
 and runs with in-memory tickets only. An HTTP listener error (for example the port already
-in use) is logged at error level, but the process keeps running with gRPC only, so watch for it.
+in use) is logged at fatal level and stops the process: it never keeps running on gRPC alone,
+where health checks would pass while no WebSocket session could open. A shared-store write
+failure (Redis answering but rejecting the write) fails the `CreateSession` call with
+`Unavailable` instead of handing out a ticket that was never stored.
 
 ## Health
 

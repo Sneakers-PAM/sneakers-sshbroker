@@ -26,9 +26,14 @@ func TestRequiredCompositeNeverUsesMemoryForReferences(t *testing.T) {
 	if c.Ready() {
 		t.Fatal("a required composite with no shared store must not be ready")
 	}
-	id, ticket, _ := c.Create(refParams())
+	id, ticket, _, err := c.Create(refParams())
 	if id != "" || ticket != "" {
 		t.Fatalf("reference ticket created before Redis attached: id=%q ticket=%q", id, ticket)
+	}
+	// #22: Create must say WHY no ticket came back, not just hand back
+	// empty strings a caller might mistake for success.
+	if err == nil {
+		t.Fatal("expected an error when the required shared store isn't attached yet")
 	}
 	local.mu.Lock()
 	n := len(local.byID)
@@ -53,7 +58,7 @@ func TestRequiredCompositeReadyAfterAttach(t *testing.T) {
 	if !a.Ready() || !b.Ready() {
 		t.Fatal("composite not ready after Attach")
 	}
-	_, ticket, _ := a.Create(refParams())
+	_, ticket, _, _ := a.Create(refParams())
 	if ticket == "" {
 		t.Fatal("no ticket after Attach")
 	}
@@ -131,7 +136,7 @@ func TestConnectSharedRetriesUntilRedisAnswers(t *testing.T) {
 	if !c.Ready() {
 		t.Fatal("not ready after Redis came up")
 	}
-	_, ticket, _ := c.Create(refParams())
+	_, ticket, _, _ := c.Create(refParams())
 	if ticket == "" || len(mr.Keys()) != 1 {
 		t.Fatalf("reference ticket not in Redis: ticket=%q keys=%v", ticket, mr.Keys())
 	}

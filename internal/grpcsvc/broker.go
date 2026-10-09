@@ -95,9 +95,17 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
 
-	id, ticket, expiresIn := b.store.Create(session.Params{
+	port := req.GetPort()
+	if port == 0 {
+		port = 22
+	}
+	if port < 1 || port > 65535 {
+		return nil, status.Error(codes.InvalidArgument, "port must be between 1 and 65535")
+	}
+
+	id, ticket, expiresIn, err := b.store.Create(session.Params{
 		Host:        req.GetHost(),
-		Port:        req.GetPort(),
+		Port:        port,
 		Username:    req.GetUsername(),
 		PrivateKey:  req.GetPrivateKey(),
 		Passphrase:  req.GetPassphrase(),
@@ -113,6 +121,10 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 		HostKeys: req.GetHostKeys(),
 		TTL:      ttl,
 	})
+	if err != nil {
+		logger.Error().Err(err).Str("actor_user_id", req.GetActorUserId()).Str("target_id", req.GetTargetId()).Msg("ticket store create failed")
+		return nil, status.Error(codes.Unavailable, "ticket store not ready")
+	}
 	if ticket == "" {
 		return nil, status.Error(codes.Unavailable, "ticket store not ready")
 	}

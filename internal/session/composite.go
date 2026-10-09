@@ -3,7 +3,14 @@
 
 package session
 
-import "sync/atomic"
+import (
+	"errors"
+	"sync/atomic"
+)
+
+// errSharedStoreRequired is returned by a required Composite's Create when
+// the shared store hasn't been attached yet (Redis isn't up or reachable).
+var errSharedStoreRequired = errors.New("shared ticket store required but not attached")
 
 // Composite routes tickets between a shared reference store (Redis) and a
 // pod-local in-memory Store, giving the broker HA for the reference path while
@@ -69,14 +76,17 @@ func (c *Composite) sharedStore() TicketStore {
 	return nil
 }
 
-// Create routes per the rules above.
-func (c *Composite) Create(p Params) (id, ticket string, expiresIn int) {
+// Create routes per the rules above. A non-nil err (the shared store is
+// required but not yet attached, or a shared-store write failed) always
+// comes back with id and ticket empty: the caller must never hand out a
+// ticket this composite did not actually persist.
+func (c *Composite) Create(p Params) (id, ticket string, expiresIn int, err error) {
 	if p.PrivateKey == "" {
 		if shared := c.sharedStore(); shared != nil {
 			return shared.Create(p)
 		}
 		if c.required {
-			return "", "", 0
+			return "", "", 0, errSharedStoreRequired
 		}
 	}
 	return c.local.Create(p)

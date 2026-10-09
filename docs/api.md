@@ -86,8 +86,8 @@ as the vault's `PrincipalKind`) is `PRINCIPAL_KIND_HUMAN` when unset; any other 
 `PRINCIPAL_KIND_WORKLOAD`) returns `PermissionDenied` on both forms, mints no ticket and sends a
 `session.refuse` audit event. The gateway sets the kind from the principal it authenticated.
 
-A missing field returns `InvalidArgument`. `port` 0 means port 0 is dialled, so callers should
-send the target's port (22 for most targets). `ttl_seconds` 0 or less means 30 seconds.
+A missing field returns `InvalidArgument`. `port` 0 defaults to 22 (the SSH convention); a port
+outside 1-65535 returns `InvalidArgument`. `ttl_seconds` 0 or less means 30 seconds.
 
 The response carries `session_id`, the `ticket`, `ws_url` (`SSHBROKER_PUBLIC_WS_URL`) and
 `expires_in_seconds`. A `session.start` audit event is sent before the response.

@@ -18,7 +18,7 @@ func TestCompositeNilSharedFallsBackToMemory(t *testing.T) {
 	c := NewComposite(local, nil)
 	defer c.Close()
 
-	id, ticket, exp := c.Create(Params{
+	id, ticket, exp, _ := c.Create(Params{
 		Host: "h", Port: 22, Username: "u",
 		PrivateKey: "PEM", TTL: 30 * time.Second,
 	})
@@ -43,7 +43,7 @@ func TestCompositeReferenceGoesToShared(t *testing.T) {
 	c := NewComposite(local, newPod())
 	defer c.Close()
 
-	_, ticket, _ := c.Create(refParams()) // no PrivateKey -> shared
+	_, ticket, _, _ := c.Create(refParams()) // no PrivateKey -> shared
 
 	// It must NOT be in the local in-memory store...
 	if _, ok := local.Consume(ticket); ok {
@@ -66,7 +66,7 @@ func TestCompositeInlineKeyStaysLocal(t *testing.T) {
 	c := NewComposite(local, newPod())
 	defer c.Close()
 
-	_, ticket, _ := c.Create(Params{
+	_, ticket, _, _ := c.Create(Params{
 		Host: "h", Port: 22, Username: "u",
 		PrivateKey: "PEM-INLINE", TTL: 30 * time.Second,
 	})
@@ -91,7 +91,7 @@ func TestCompositeConsumeTriesSharedThenLocal(t *testing.T) {
 	defer c.Close()
 
 	// Seed the local store directly (as the inline path would).
-	id, ticket, _ := local.Create(Params{Host: "h", Username: "u", PrivateKey: "PEM", TTL: time.Minute})
+	id, ticket, _, _ := local.Create(Params{Host: "h", Username: "u", PrivateKey: "PEM", TTL: time.Minute})
 	if !c.Contains(id) {
 		t.Fatal("composite.Contains should see the local session")
 	}

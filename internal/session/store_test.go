@@ -10,7 +10,7 @@ import (
 
 func TestCreateAndConsumeOnce(t *testing.T) {
 	s := NewStore()
-	id, ticket, exp := s.Create(Params{Host: "h", Port: 22, Username: "u", PrivateKey: "PEM", TTL: 30 * time.Second})
+	id, ticket, exp, _ := s.Create(Params{Host: "h", Port: 22, Username: "u", PrivateKey: "PEM", TTL: 30 * time.Second})
 	if id == "" || ticket == "" || exp != 30 {
 		t.Fatalf("Create returned id=%q ticket=%q exp=%d", id, ticket, exp)
 	}
@@ -25,7 +25,7 @@ func TestCreateAndConsumeOnce(t *testing.T) {
 
 func TestExpiredTicketRejected(t *testing.T) {
 	s := NewStore()
-	_, ticket, _ := s.Create(Params{Host: "h", Port: 22, TTL: 10 * time.Millisecond})
+	_, ticket, _, _ := s.Create(Params{Host: "h", Port: 22, TTL: 10 * time.Millisecond})
 	time.Sleep(30 * time.Millisecond)
 	if _, ok := s.Consume(ticket); ok {
 		t.Fatal("expired ticket must not be consumable")
