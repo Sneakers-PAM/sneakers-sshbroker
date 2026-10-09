@@ -266,7 +266,10 @@ func main() {
 	go func() {
 		logger.Info().Str("http", httpPort).Msg("ws http listening")
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error().Err(err).Msg("http server")
+			// A failed listener (a bind error, for example) must not leave
+			// the process running on gRPC alone: gRPC health checks would
+			// keep passing while no WebSocket session could ever open.
+			logger.Fatal().Err(err).Msg("http server")
 		}
 	}()
 	go func() {

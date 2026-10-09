@@ -40,7 +40,7 @@ func TestHandlerRefusesUnlistedOrigin(t *testing.T) {
 	host, port, hostPin, stop := startEchoSSHServer(t, pub)
 	defer stop()
 	store := newTestStore(t)
-	_, ticket, _ := store.Create(session.Params{
+	_, ticket, _, _ := store.Create(session.Params{
 		Host: host, Port: int32(port), Username: "tester", PrivateKey: pemPriv,
 		HostKeys: []string{hostPin}, TTL: 5 * time.Second,
 	})
@@ -70,7 +70,7 @@ func TestHandlerAcceptsListedOrigin(t *testing.T) {
 	host, port, hostPin, stop := startEchoSSHServer(t, pub)
 	defer stop()
 	store := newTestStore(t)
-	_, ticket, _ := store.Create(session.Params{
+	_, ticket, _, _ := store.Create(session.Params{
 		Host: host, Port: int32(port), Username: "tester", PrivateKey: pemPriv,
 		HostKeys: []string{hostPin}, TTL: 5 * time.Second,
 	})
@@ -87,7 +87,7 @@ func TestHandlerAcceptsListedOrigin(t *testing.T) {
 // fails closed for browsers.
 func TestHandlerWithNoOriginsRefusesEveryBrowserOrigin(t *testing.T) {
 	store := newTestStore(t)
-	_, ticket, _ := store.Create(session.Params{Host: "192.0.2.1", Port: 22, Username: "u", PrivateKey: "PEM", TTL: 5 * time.Second})
+	_, ticket, _, _ := store.Create(session.Params{Host: "192.0.2.1", Port: 22, Username: "u", PrivateKey: "PEM", TTL: 5 * time.Second})
 	srv := httptest.NewServer(Handler(store, nil, nil))
 	defer srv.Close()
 

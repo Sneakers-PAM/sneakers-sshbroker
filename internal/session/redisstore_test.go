@@ -61,7 +61,7 @@ func TestRedisCrossReplicaRedeem(t *testing.T) {
 	podA := newPod()
 	podB := newPod()
 
-	id, ticket, exp := podA.Create(refParams())
+	id, ticket, exp, _ := podA.Create(refParams())
 	if id == "" || ticket == "" || exp != 30 {
 		t.Fatalf("Create returned id=%q ticket=%q exp=%d", id, ticket, exp)
 	}
@@ -89,7 +89,7 @@ func TestRedisSingleUse(t *testing.T) {
 	podA := newPod()
 	podB := newPod()
 
-	_, ticket, _ := podA.Create(refParams())
+	_, ticket, _, _ := podA.Create(refParams())
 	if _, ok := podA.Consume(ticket); !ok {
 		t.Fatal("first redeem should succeed")
 	}
@@ -111,7 +111,7 @@ func TestRedisNeverStoresKey(t *testing.T) {
 	p := refParams()
 	p.PrivateKey = "-----BEGIN OPENSSH PRIVATE KEY-----SENSITIVE-----END-----"
 	p.Passphrase = "hunter2"
-	_, ticket, _ := pod.Create(p)
+	_, ticket, _, _ := pod.Create(p)
 
 	// Inspect the raw value stored in Redis: it must not contain the key bytes.
 	raw, err := mr.Get(ticketKeyPrefix + ticket)
@@ -139,7 +139,7 @@ func TestRedisTTLExpiry(t *testing.T) {
 
 	p := refParams()
 	p.TTL = 5 * time.Second
-	_, ticket, exp := pod.Create(p)
+	_, ticket, exp, _ := pod.Create(p)
 	if exp != 5 {
 		t.Fatalf("expiresIn = %d, want 5", exp)
 	}
@@ -170,12 +170,29 @@ func TestRedisTicketCarriesHostKeys(t *testing.T) {
 	p := refParams()
 	// The store does not parse pins; placeholders keep key-shaped data out of the source.
 	p.HostKeys = []string{"pinned-host-key-1", "pinned-host-key-2"}
-	_, ticket, _ := mint.Create(p)
+	_, ticket, _, _ := mint.Create(p)
 	sess, ok := redeem.Consume(ticket)
 	if !ok {
 		t.Fatal("ticket not redeemable on second pod")
 	}
 	if strings.Join(sess.HostKeys, "|") != strings.Join(p.HostKeys, "|") {
 		t.Fatalf("host keys after redeem = %q, want %q", sess.HostKeys, p.HostKeys)
+	}
+}
+
+// TestRedisCreateFailsClosedOnWriteError covers #22: a Redis write failure
+// must come back as an error, not a ticket that was never actually stored
+// (which would 403 at redeem time with nothing explaining why in the log).
+func TestRedisCreateFailsClosedOnWriteError(t *testing.T) {
+	mr, newPod := newMiniRedis(t)
+	pod := newPod()
+	mr.Close() // the shared Redis failed after the pod connected
+
+	id, ticket, _, err := pod.Create(refParams())
+	if err == nil {
+		t.Fatal("expected an error when the Redis write fails")
+	}
+	if id != "" || ticket != "" {
+		t.Fatalf("Create returned id=%q ticket=%q on a failed write, want both empty", id, ticket)
 	}
 }

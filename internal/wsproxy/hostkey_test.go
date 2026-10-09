@@ -85,7 +85,7 @@ func startKeyedEchoSSHServer(t *testing.T, authorizedPub ssh.PublicKey, hostKeys
 
 func pinnedSession(t *testing.T, store *session.Store, host string, port int, key string, pins []string) (id, ticket string) {
 	t.Helper()
-	id, ticket, _ = store.Create(session.Params{
+	id, ticket, _, _ = store.Create(session.Params{
 		Host: host, Port: int32(port), Username: "tester", PrivateKey: key,
 		TargetID: "target-1", HostKeys: pins, TTL: 5 * time.Second,
 	})

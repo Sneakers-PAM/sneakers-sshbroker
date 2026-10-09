@@ -46,8 +46,10 @@ type Actor struct {
 // is satisfied by the in-memory Store, the shared RedisStore, and Composite.
 type TicketStore interface {
 	// Create registers a pending session and returns its opaque id, single-use
-	// ticket, and TTL in whole seconds.
-	Create(p Params) (id, ticket string, expiresIn int)
+	// ticket, and TTL in whole seconds. A non-nil err means no ticket was
+	// stored (id and ticket are empty); the caller must not hand out a
+	// ticket that was never written.
+	Create(p Params) (id, ticket string, expiresIn int, err error)
 	// Consume atomically looks up and removes a ticket (single-use), returning
 	// the session and true on success.
 	Consume(ticket string) (*Session, bool)
@@ -170,8 +172,10 @@ func (s *Store) Close() {
 
 // Create builds a new Session from Params, issues an opaque id and
 // single-use ticket, and registers the ticket pending consumption before
-// its deadline. Returns the id, ticket, and TTL in whole seconds.
-func (s *Store) Create(p Params) (id, ticket string, expiresIn int) {
+// its deadline. Returns the id, ticket, and TTL in whole seconds. The
+// in-memory map insert cannot fail, so err is always nil; it exists to
+// satisfy TicketStore alongside RedisStore, which can.
+func (s *Store) Create(p Params) (id, ticket string, expiresIn int, err error) {
 	ttl := p.TTL
 	if ttl <= 0 {
 		ttl = DefaultTTL
@@ -204,7 +208,7 @@ func (s *Store) Create(p Params) (id, ticket string, expiresIn int) {
 	}
 	s.mu.Unlock()
 
-	return id, ticket, int(ttl / time.Second)
+	return id, ticket, int(ttl / time.Second), nil
 }
 
 // Consume looks up a ticket, removing it (single-use). It returns the

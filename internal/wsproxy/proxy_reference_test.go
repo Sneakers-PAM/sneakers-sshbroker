@@ -72,7 +72,7 @@ func TestReferenceCrossReplicaRedeem(t *testing.T) {
 
 	// Pod A (the gateway's CreateSession target) mints a reference ticket: NO
 	// key, just the secret id + actor.
-	_, ticket, _ := mintPod.Create(session.Params{
+	_, ticket, _, _ := mintPod.Create(session.Params{
 		Host:        host,
 		Port:        int32(port),
 		Username:    "tester",
@@ -121,7 +121,7 @@ func TestReferenceCrossReplicaRedeem(t *testing.T) {
 // redeemed if no vault fetcher is configured (fail-closed, never dials).
 func TestReferenceTicketRejectedWithoutFetcher(t *testing.T) {
 	mintPod, wsPod := sharedRedisPods(t)
-	_, ticket, _ := mintPod.Create(session.Params{
+	_, ticket, _, _ := mintPod.Create(session.Params{
 		Host: "192.0.2.1", Port: 22, Username: "tester",
 		SecretID: "sec-1", ActorUserID: "user-9",
 		Actor: session.Actor{UserID: "user-9"},

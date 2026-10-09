@@ -150,3 +150,37 @@ func TestCreateSessionValidatesRequiredFields(t *testing.T) {
 		})
 	}
 }
+
+// TestCreateSessionPort covers #22: port 0 must not be dialled as port 0 (it
+// defaults to 22, the SSH convention also used by ScanHostKey), and an
+// out-of-range port is refused rather than passed through to the dialer.
+func TestCreateSessionPort(t *testing.T) {
+	newReq := func(port int32) *sshbrokerv1.CreateSessionRequest {
+		return &sshbrokerv1.CreateSessionRequest{
+			Host: "192.0.2.1", Port: port, Username: "root", PrivateKey: "PEM",
+			ActorUserId: "actor-1", SecretId: "secret-1", TargetId: "target-1",
+		}
+	}
+
+	t.Run("zero defaults to 22", func(t *testing.T) {
+		store := session.NewStore()
+		b := NewBroker(store, nilAudit(), "ws://localhost:9097/ssh/session")
+		resp, err := b.CreateSession(context.Background(), newReq(0))
+		if err != nil {
+			t.Fatalf("CreateSession error: %v", err)
+		}
+		sess, ok := store.Consume(resp.GetTicket())
+		if !ok || sess.Port != 22 {
+			t.Fatalf("port 0 stored as %d, want 22 (ok=%v)", sess.Port, ok)
+		}
+	})
+
+	t.Run("out of range refused", func(t *testing.T) {
+		store := session.NewStore()
+		b := NewBroker(store, nilAudit(), "ws://localhost:9097/ssh/session")
+		_, err := b.CreateSession(context.Background(), newReq(70000))
+		if status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("expected InvalidArgument for an out-of-range port, got %v", err)
+		}
+	})
+}
