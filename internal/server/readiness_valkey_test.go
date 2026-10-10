@@ -56,7 +56,7 @@ func TestReadiness_RealValkeyStopsAndStarts(t *testing.T) {
 	}
 	docker("stop", container)
 	t.Cleanup(func() { _ = exec.Command("docker", "start", container).Run() })
-	time.Sleep(testTTL)
+	time.Sleep(2 * testTTL)
 	if st, _, err := check(t, hc, ""); err != nil || st != healthpb.HealthCheckResponse_NOT_SERVING {
 		t.Fatalf("valkey stopped: readiness %v %v, want NOT_SERVING", st, err)
 	}

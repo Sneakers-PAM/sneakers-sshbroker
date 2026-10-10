@@ -39,6 +39,7 @@ func TestHTTPHealth_FollowsReadiness(t *testing.T) {
 			return nil
 		}},
 	)
+	refreshed(t, checker)
 	mux := http.NewServeMux()
 	if err := RegisterHTTPHealth(mux, checker); err != nil {
 		t.Fatal(err)
@@ -63,7 +64,7 @@ func TestHTTPHealth_FollowsReadiness(t *testing.T) {
 	}
 
 	down.Store(false)
-	time.Sleep(testTTL)
+	time.Sleep(2 * testTTL)
 	if rec := get(t, mux, "/readyz"); rec.Code != http.StatusOK {
 		t.Fatalf("/readyz recovered: %d", rec.Code)
 	}

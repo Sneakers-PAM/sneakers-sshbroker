@@ -94,6 +94,7 @@ func TestWorkloadAuthRun_ComesUpWhenTheFirstJWKSFetchFailsThenSucceeds(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	refreshed(t, c)
 	if r := c.Report(context.Background()); r.Status != health.StateDown {
 		t.Fatalf("readiness before any key set: %+v", r)
 	}
