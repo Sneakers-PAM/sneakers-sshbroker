@@ -24,9 +24,11 @@ two names:
   dependencies.
 
 Any other name gets `NotFound`. `Watch` streams the serving status of either name as it changes.
-Each dependency is checked with a
-1-second timeout and the result is reused for 5 seconds, so probes don't load the dependencies;
-readiness recovers on its own once the dependency is back and that window has passed.
+The dependencies are checked in the
+background every 5 seconds, each with a 1-second timeout, and a health check (gRPC or `/readyz`)
+only reads the last result, so a probe never waits on a dependency and probes don't load them;
+readiness recovers on its own at the next pass after the dependency is back. Right after the
+start, before the first pass, each dependency is `down` with the class `pending`.
 
 The HTTP port serves the same readiness: `GET /readyz` answers 200 (ok or degraded) or 503 (a
 required dependency down) with the report and the build as its body

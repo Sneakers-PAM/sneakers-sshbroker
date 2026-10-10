@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Bugs5382/go-buildinfo/health"
 	log "github.com/Bugs5382/go-log"
@@ -30,7 +31,26 @@ func checker(t *testing.T, deps []health.Dependency) *health.Checker {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c
+	// Reports read what the background refresh recorded: run it, as the
+	// server does, and wait for its first pass.
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		pending := false
+		for _, d := range c.Report(context.Background()).Dependencies {
+			pending = pending || d.Error == health.ClassPending
+		}
+		if !pending {
+			return c
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the first background refresh never settled")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func states(r health.Report) map[string]health.DependencyReport {
