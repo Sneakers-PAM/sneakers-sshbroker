@@ -87,6 +87,9 @@ as the vault's `PrincipalKind`) is `PRINCIPAL_KIND_HUMAN` when unset; any other 
 (`PRINCIPAL_KIND_USER_TOKEN` for an MCP or agent token, `PRINCIPAL_KIND_SERVICE_ACCOUNT` or
 `PRINCIPAL_KIND_WORKLOAD`) returns `PermissionDenied` on both forms, mints no ticket and sends a
 `session.refuse` audit event. The gateway sets the kind from the principal it authenticated.
+`actor.session_ref` is the opaque reference to the person's signed-in web session. The ticket
+keeps it (the Redis copy too) and the key reveal passes it to the vault, which refuses a person's
+reveal that doesn't carry one.
 
 A missing field returns `InvalidArgument`. `port` 0 defaults to 22 (the SSH convention); a port
 outside 1-65535 returns `InvalidArgument`. `ttl_seconds` 0 or less means 30 seconds.
