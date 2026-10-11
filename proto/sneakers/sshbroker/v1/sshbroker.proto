@@ -62,6 +62,10 @@ message ActorContext {
   // sneakers.vault.v1.ActorContext.principal_kind (same field number). Any
   // kind but HUMAN is refused with PermissionDenied, on both paths.
   PrincipalKind principal_kind = 6;
+  // The opaque reference to the person's signed-in web session, as in
+  // sneakers.vault.v1.ActorContext.session_ref (same field number). The
+  // broker passes it to the vault with the key reveal.
+  string session_ref = 12;
 }
 
 message CreateSessionRequest {

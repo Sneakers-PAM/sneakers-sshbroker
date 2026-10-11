@@ -40,6 +40,8 @@ type Actor struct {
 	IsSiteAdmin bool
 	IsRoot      bool
 	GroupNames  []string
+	// SessionRef is the person's web session reference the gateway sent.
+	SessionRef string
 }
 
 // TicketStore is the minimal ticket surface the broker and WS handler use. It

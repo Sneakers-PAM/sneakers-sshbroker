@@ -99,5 +99,6 @@ func actorContext(a session.Actor) *vaultv1.ActorContext {
 		IsSiteAdmin: a.IsSiteAdmin,
 		IsRoot:      a.IsRoot,
 		GroupNames:  a.GroupNames,
+		SessionRef:  a.SessionRef,
 	}
 }

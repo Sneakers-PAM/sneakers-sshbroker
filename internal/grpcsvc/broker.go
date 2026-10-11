@@ -117,6 +117,7 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 			IsSiteAdmin: req.GetActor().GetIsSiteAdmin(),
 			IsRoot:      req.GetActor().GetIsRoot(),
 			GroupNames:  req.GetActor().GetGroupNames(),
+			SessionRef:  req.GetActor().GetSessionRef(),
 		},
 		HostKeys: req.GetHostKeys(),
 		TTL:      ttl,
