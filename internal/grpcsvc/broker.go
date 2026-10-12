@@ -64,44 +64,11 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 	if r, ok := b.store.(readiness); ok && !r.Ready() {
 		return nil, status.Error(codes.Unavailable, "ticket store not ready")
 	}
-	if req.GetHost() == "" {
-		return nil, status.Error(codes.InvalidArgument, "host is required")
+	port, err := validateCreate(req)
+	if err != nil {
+		return nil, err
 	}
-	if req.GetUsername() == "" {
-		return nil, status.Error(codes.InvalidArgument, "username is required")
-	}
-	if req.GetActorUserId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "actor_user_id is required")
-	}
-	// One of the two supply forms must be usable: an inline key, or a reference
-	// (secret_id + an actor to reveal it with). Otherwise there is no way to
-	// obtain key material at redeem time.
-	if req.GetPrivateKey() == "" {
-		if req.GetSecretId() == "" {
-			return nil, status.Error(codes.InvalidArgument, "secret_id is required when private_key is omitted")
-		}
-		if req.GetActor().GetUserId() == "" {
-			return nil, status.Error(codes.InvalidArgument, "actor.user_id is required when private_key is omitted")
-		}
-	}
-
-	// Pins come from the vault, which checked them on save; a pin that does
-	// not parse here means a caller bypassed that, so refuse the ticket.
-	for i, k := range req.GetHostKeys() {
-		if _, _, opts, rest, err := ssh.ParseAuthorizedKey([]byte(k)); err != nil || len(opts) > 0 || len(rest) > 0 {
-			return nil, status.Errorf(codes.InvalidArgument, "host_keys[%d] is not an OpenSSH public key", i)
-		}
-	}
-
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
-
-	port := req.GetPort()
-	if port == 0 {
-		port = 22
-	}
-	if port < 1 || port > 65535 {
-		return nil, status.Error(codes.InvalidArgument, "port must be between 1 and 65535")
-	}
 
 	id, ticket, expiresIn, err := b.store.Create(session.Params{
 		Host:        req.GetHost(),
@@ -131,6 +98,17 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 	}
 
 	b.audit.Start(ctx, req.GetActorUserId(), req.GetSecretId(), req.GetTargetId(), req.GetHost())
+	logger.Info().
+		Str("session_id", id).
+		Str("host", req.GetHost()).
+		Int32("port", port).
+		Str("target_id", req.GetTargetId()).
+		Str("secret_id", req.GetSecretId()).
+		Str("actor_user_id", req.GetActorUserId()).
+		Int("host_keys", len(req.GetHostKeys())).
+		Bool("reference", req.GetPrivateKey() == "").
+		Dur("ttl", ttl).
+		Msg("ssh session ticket issued")
 
 	return &sshbrokerv1.CreateSessionResponse{
 		SessionId:        id,
@@ -138,6 +116,48 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 		WsUrl:            b.wsBase,
 		ExpiresInSeconds: safeconv.Int32(expiresIn),
 	}, nil
+}
+
+// validateCreate checks a CreateSession request's inputs and returns the
+// port to dial (22 when unset).
+func validateCreate(req *sshbrokerv1.CreateSessionRequest) (int32, error) {
+	if req.GetHost() == "" {
+		return 0, status.Error(codes.InvalidArgument, "host is required")
+	}
+	if req.GetUsername() == "" {
+		return 0, status.Error(codes.InvalidArgument, "username is required")
+	}
+	if req.GetActorUserId() == "" {
+		return 0, status.Error(codes.InvalidArgument, "actor_user_id is required")
+	}
+	// One of the two supply forms must be usable: an inline key, or a reference
+	// (secret_id + an actor to reveal it with). Otherwise there is no way to
+	// obtain key material at redeem time.
+	if req.GetPrivateKey() == "" {
+		if req.GetSecretId() == "" {
+			return 0, status.Error(codes.InvalidArgument, "secret_id is required when private_key is omitted")
+		}
+		if req.GetActor().GetUserId() == "" {
+			return 0, status.Error(codes.InvalidArgument, "actor.user_id is required when private_key is omitted")
+		}
+	}
+
+	// Pins come from the vault, which checked them on save; a pin that does
+	// not parse here means a caller bypassed that, so refuse the ticket.
+	for i, k := range req.GetHostKeys() {
+		if _, _, opts, rest, err := ssh.ParseAuthorizedKey([]byte(k)); err != nil || len(opts) > 0 || len(rest) > 0 {
+			return 0, status.Errorf(codes.InvalidArgument, "host_keys[%d] is not an OpenSSH public key", i)
+		}
+	}
+
+	port := req.GetPort()
+	if port == 0 {
+		port = 22
+	}
+	if port < 1 || port > 65535 {
+		return 0, status.Error(codes.InvalidArgument, "port must be between 1 and 65535")
+	}
+	return port, nil
 }
 
 // RegisterServer wires the sshbroker gRPC server into a grpc.Server. The

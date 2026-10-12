@@ -129,27 +129,46 @@ listed gets `403 origin not allowed`, and the ticket is left unused. A request w
 header isn't from a browser, so it can't be a cross-site WebSocket hijack, and it goes on to the
 ticket check.
 
-Before the upgrade the broker then consumes the ticket, reveals the key when the ticket is a reference,
-and dials the target. The dial checks the target's host key against the ticket's `host_keys` (it
-asks for the pinned keys' algorithms, so a host with several keys presents a pinned one). A
-host-key refusal reaches the client as its reason text: a WebSocket client gets the upgrade and
-then a close frame with code 1008 (policy violation) and the reason, since a browser can't read
-the body of a failed handshake; any other client gets the reason as a 502 body.
+Before the upgrade the broker then consumes the ticket, reveals the key when the ticket is a
+reference, dials the target, runs the SSH handshake and authentication, and starts the PTY and the
+shell. The dial checks the target's host key against the ticket's `host_keys` (it asks for the
+pinned keys' algorithms, so a host with several keys presents a pinned one). Every step is bounded,
+and so is the whole open:
 
-| Close or status | Reason | Cause |
+| Step | Bound |
+|---|---|
+| The vault reveal of the key | 10 s |
+| The TCP connect to the target | 15 s |
+| The SSH banner, key exchange, host-key check and authentication | 15 s |
+| The session channel, PTY and shell | 15 s |
+| The whole open, from the ticket to the upgrade | 45 s |
+
+A failed step reaches the client as one sentence naming the step and the reason. A browser can't
+read the body of a failed handshake, so a WebSocket client gets the upgrade and then a close frame
+carrying the sentence (cut to the frame's 123 bytes); any other client gets the sentence as the
+response body. The same sentence is the `session.end` reason.
+
+| Close, or status | Sentence | Cause |
 |---|---|---|
 | 1008, or 502 | `host key not pinned for this target` | The ticket has no `host_keys`. |
 | 1008, or 502 | `host key mismatch` | The host presented a key that isn't one of the `host_keys`. |
+| 1011, or 502 | `couldn't get the key: the vault didn't answer in 10s`, `... the vault refused access to it`, `... the vault isn't reachable` | The reveal timed out or the vault refused or failed it. |
+| 1011, or 500 | `the stored key isn't a private key the broker can read`, `the stored passphrase doesn't open the stored key` | The key could not be parsed. |
+| 1011, or 502 | `can't reach <host>:<port>: connection timed out`, `... connection refused`, `... no route to host`, `can't find <host> in DNS` | The TCP connect failed. |
+| 1011, or 502 | `<host>:<port> didn't finish the SSH handshake in 15s` | The target took the connection but never finished the handshake. |
+| 1011, or 502 | `<host>:<port> refused the key for <user>` | Authentication failed. |
+| 1011, or 502 | `<host>:<port> didn't start a shell in 15s`, `<host>:<port> refused a shell: ...` | The session, PTY or shell request stalled or was refused. |
 
-Any other failure there is a plain HTTP error and no upgrade:
+A step cut short by the whole open's bound says `within the 45s open limit` in place of its own
+bound.
+
+Before any of that, two failures are plain HTTP errors with no upgrade, and they leave no
+`session.end`:
 
 | Status | Body | Cause |
 |---|---|---|
 | 403 | `origin not allowed` | A browser `Origin` that isn't in `SSHBROKER_ALLOWED_ORIGINS`. The ticket stays unused. |
 | 403 | `invalid or expired ticket` | No ticket, an unknown or used ticket, or one past its time to live. |
-| 502 | `session key error` | The vault refused or failed the reveal, or no vault client is configured. |
-| 500 | `session key error` | The key could not be parsed (or the passphrase is wrong). |
-| 502 | `ssh dial failed` | The target was unreachable, or refused the key. |
 
 After the upgrade:
 
@@ -165,8 +184,8 @@ audit event is then sent with the duration and the reason.
 ## Audit events
 
 The events go to the audit service's `RecordEvent` at the audit tier, marked sensitive, with the
-actor and the secret id as the subject. They are best-effort: a failed send is logged and the
-session carries on. No key material is ever put in an event.
+actor and the secret id as the subject. They are best-effort: each send is bounded at 5 seconds, and a
+failed one is logged and the session carries on. No key material is ever put in an event.
 
 | Action | When | Attributes |
 |---|---|---|

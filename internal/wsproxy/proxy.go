@@ -47,6 +47,9 @@ var logger = log.New("sshbroker-wsproxy")
 //     goes silently dead without ever sending EOF.
 //   - Absolute cutoff (defaultMaxSessionDuration): bounds total session
 //     lifetime even under continuous legitimate activity.
+//
+// The open path, before the WebSocket upgrade, has its own bounds (see
+// open.go): each step, and the whole open below the sum of them.
 const (
 	defaultPongWait             = 60 * time.Second
 	defaultPingPeriod           = 30 * time.Second
@@ -56,6 +59,12 @@ const (
 	// full working session while still guaranteeing key material is never
 	// resident indefinitely (e.g. a forgotten open tab).
 	defaultMaxSessionDuration = 8 * time.Hour
+
+	defaultRevealTimeout    = 10 * time.Second
+	defaultDialTimeout      = 15 * time.Second
+	defaultHandshakeTimeout = 15 * time.Second
+	defaultShellTimeout     = 15 * time.Second
+	defaultOpenTimeout      = 45 * time.Second
 )
 
 // Config carries the liveness/lifetime tunables used by HandlerWithConfig.
@@ -76,6 +85,17 @@ type Config struct {
 	SSHKeepaliveInterval time.Duration
 	// MaxSessionDuration is the absolute session lifetime cutoff.
 	MaxSessionDuration time.Duration
+	// RevealTimeout bounds the vault reveal of the session's key.
+	RevealTimeout time.Duration
+	// DialTimeout bounds the TCP connect to the target.
+	DialTimeout time.Duration
+	// HandshakeTimeout bounds the SSH banner, key exchange, host-key check
+	// and authentication, after the TCP connect.
+	HandshakeTimeout time.Duration
+	// ShellTimeout bounds the session channel, PTY and shell requests.
+	ShellTimeout time.Duration
+	// OpenTimeout bounds the whole open, from the ticket to the upgrade.
+	OpenTimeout time.Duration
 	// AllowedOrigins are the browser origins (normalized, see ParseOrigins)
 	// that may open a session. Empty refuses every browser origin.
 	AllowedOrigins []string
@@ -97,7 +117,19 @@ func (c Config) withDefaults() Config {
 	if c.MaxSessionDuration <= 0 {
 		c.MaxSessionDuration = defaultMaxSessionDuration
 	}
+	c.RevealTimeout = orDefault(c.RevealTimeout, defaultRevealTimeout)
+	c.DialTimeout = orDefault(c.DialTimeout, defaultDialTimeout)
+	c.HandshakeTimeout = orDefault(c.HandshakeTimeout, defaultHandshakeTimeout)
+	c.ShellTimeout = orDefault(c.ShellTimeout, defaultShellTimeout)
+	c.OpenTimeout = orDefault(c.OpenTimeout, defaultOpenTimeout)
 	return c
+}
+
+func orDefault(d, def time.Duration) time.Duration {
+	if d <= 0 {
+		return def
+	}
+	return d
 }
 
 // resizeMsg is the only text control frame the client may send: a terminal
@@ -168,9 +200,11 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 
 		logger.Info().
 			Str("host", sess.Host).
+			Int32("port", sess.Port).
 			Str("target_id", sess.TargetID).
 			Str("secret_id", sess.SecretID).
 			Str("actor_user_id", sess.ActorUserID).
+			Bool("reference", !sess.HasKey()).
 			Msg("ssh session opening")
 
 		reason := "closed"
@@ -187,50 +221,21 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 				Msg("ssh session closed")
 		}()
 
-		// Reference path: the ticket carried no key (it lived in the shared
-		// store), so this pod reveals it from the vault now, using the ticket's
-		// actor. The key lands only on this Session (zeroized by the defer
-		// above), never in any shared store. Inline-path sessions already carry
-		// their key and skip this.
-		if !sess.HasKey() {
-			if failReason, err := revealKey(r.Context(), keys, sess); err != nil {
-				reason = failReason
-				logFailure(sess, reason, err)
-				http.Error(w, "session key error", http.StatusBadGateway)
-				return
-			}
-		}
-
-		signer, err := parseSigner(sess)
-		if err != nil {
-			reason = "key parse error"
-			logFailure(sess, reason, err)
-			http.Error(w, "session key error", http.StatusInternalServerError)
+		// Every step that can fail runs before the upgrade, each bounded, so
+		// a failure reaches the client as a sentence naming the step instead
+		// of a socket that never opens.
+		st := newSteps(sess)
+		openCtx, cancelOpen := context.WithTimeout(r.Context(), cfg.OpenTimeout)
+		tgt, oerr := openTarget(openCtx, cfg, keys, sess, st)
+		cancelOpen()
+		if oerr != nil {
+			reason = oerr.msg
+			st.failed(oerr)
+			refuse(w, r, upgrader, cfg, oerr)
 			return
 		}
-
-		pins, pinAlgos := parsePins(sess)
-		cfgSSH := &ssh.ClientConfig{
-			User:              sess.Username,
-			Auth:              []ssh.AuthMethod{ssh.PublicKeys(signer)},
-			HostKeyCallback:   pinnedHostKeyCallback(sess, pins),
-			HostKeyAlgorithms: pinAlgos,
-			Timeout:           10 * time.Second,
-		}
-		client, err := ssh.Dial("tcp", addr(sess), cfgSSH)
-		if err != nil {
-			if msg, ok := hostKeyRefusal(err); ok {
-				reason = msg
-				logFailure(sess, reason, err)
-				refuse(w, r, upgrader, cfg, msg)
-				return
-			}
-			reason = "ssh dial failed"
-			logFailure(sess, reason, err)
-			http.Error(w, "ssh dial failed", http.StatusBadGateway)
-			return
-		}
-		defer func() { _ = client.Close() }()
+		defer tgt.close()
+		client, sshSess := tgt.client, tgt.session
 
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -239,6 +244,7 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 			return
 		}
 		defer func() { _ = conn.Close() }()
+		st.done("upgraded")
 
 		// writeMu serializes every write to conn: gorilla/websocket forbids
 		// concurrent writers, and the stdout/stderr pumps plus the ping
@@ -323,49 +329,6 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 			}
 		}()
 
-		sshSess, err := client.NewSession()
-		if err != nil {
-			reason = "ssh session failed"
-			logFailure(sess, reason, err)
-			return
-		}
-		defer func() { _ = sshSess.Close() }()
-
-		stdin, err := sshSess.StdinPipe()
-		if err != nil {
-			reason = "stdin pipe failed"
-			logFailure(sess, reason, err)
-			return
-		}
-		stdout, err := sshSess.StdoutPipe()
-		if err != nil {
-			reason = "stdout pipe failed"
-			logFailure(sess, reason, err)
-			return
-		}
-		stderr, err := sshSess.StderrPipe()
-		if err != nil {
-			reason = "stderr pipe failed"
-			logFailure(sess, reason, err)
-			return
-		}
-
-		modes := ssh.TerminalModes{
-			ssh.ECHO:          1,
-			ssh.TTY_OP_ISPEED: 14400,
-			ssh.TTY_OP_OSPEED: 14400,
-		}
-		if err := sshSess.RequestPty("xterm-256color", 24, 80, modes); err != nil {
-			reason = "pty request failed"
-			logFailure(sess, reason, err)
-			return
-		}
-		if err := sshSess.Shell(); err != nil {
-			reason = "shell start failed"
-			logFailure(sess, reason, err)
-			return
-		}
-
 		writeToWS := func(p []byte) error {
 			writeMu.Lock()
 			defer writeMu.Unlock()
@@ -391,8 +354,8 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 			}
 		}
 		wg.Add(2)
-		go pump(stdout)
-		go pump(stderr)
+		go pump(tgt.stdout)
+		go pump(tgt.stderr)
 
 		// ws -> ssh stdin (plus resize control frames).
 		for {
@@ -407,29 +370,13 @@ func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFe
 				}
 				continue
 			}
-			if _, werr := stdin.Write(data); werr != nil {
+			if _, werr := tgt.stdin.Write(data); werr != nil {
 				break
 			}
 		}
-		_ = stdin.Close()
+		_ = tgt.stdin.Close()
 		wg.Wait()
 	}
-}
-
-// revealKey fetches the reference-path session's key material from the vault
-// and installs it on the session (so the teardown defer still zeroizes it). It
-// returns a short failure reason (for audit/logging) and the error on failure.
-// A reference ticket with no configured fetcher is rejected rather than dialed.
-func revealKey(ctx context.Context, keys KeyFetcher, sess *session.Session) (string, error) {
-	if keys == nil {
-		return "no key fetcher", errNoKeyFetcher
-	}
-	priv, pass, err := keys.FetchKey(ctx, sess)
-	if err != nil {
-		return "vault reveal failed", err
-	}
-	sess.SetKeyMaterial(priv, pass)
-	return "", nil
 }
 
 // The two host-key refusals. Their text is what the client is shown.
@@ -513,24 +460,6 @@ func hostKeyRefusal(err error) (string, bool) {
 		return errHostKeyMismatch.Error(), true
 	}
 	return "", false
-}
-
-// refuse tells the client why the session was refused. A browser can't read
-// the body of a failed WebSocket handshake, so a WebSocket client gets the
-// upgrade and then a policy-violation close frame carrying msg; any other
-// client gets msg as a 502 body.
-func refuse(w http.ResponseWriter, r *http.Request, upgrader *websocket.Upgrader, cfg Config, msg string) {
-	if !websocket.IsWebSocketUpgrade(r) {
-		http.Error(w, msg, http.StatusBadGateway)
-		return
-	}
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return
-	}
-	defer func() { _ = conn.Close() }()
-	_ = conn.WriteControl(websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.ClosePolicyViolation, msg), time.Now().Add(cfg.WriteWait))
 }
 
 // errNoKeyFetcher is returned when a reference ticket needs a vault fetch but no
