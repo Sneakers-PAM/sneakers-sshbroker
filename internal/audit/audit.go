@@ -21,6 +21,12 @@ import (
 // need to import zerolog directly.
 var logger = log.New("sshbroker-audit")
 
+// emitTimeout bounds every audit call, so a slow or unreachable audit service
+// never holds a session open or its error back from the client. The caller's
+// cancellation is not inherited: a session.end still lands when the browser
+// has gone.
+var emitTimeout = 5 * time.Second
+
 // Emitter wraps an audit service client to record sshbroker session
 // lifecycle events. It is safe for concurrent use (the underlying gRPC
 // client is).
@@ -110,7 +116,10 @@ func (e *Emitter) emit(ctx context.Context, req *auditv1.RecordEventRequest) {
 	if e == nil || e.client == nil {
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), emitTimeout)
+	defer cancel()
+	started := time.Now()
 	if _, err := e.client.RecordEvent(ctx, req); err != nil {
-		logger.Error().Err(err).Str("action", req.Action).Msg("audit emit failed")
+		logger.Error().Err(err).Str("action", req.Action).Dur("elapsed", time.Since(started)).Msg("audit emit failed")
 	}
 }

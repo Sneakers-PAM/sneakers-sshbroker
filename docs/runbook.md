@@ -113,22 +113,43 @@ replica. Key material lives only on that replica's session record and is zeroize
 ends. A session ends when either side closes, when the browser misses pongs for 60 seconds, when an
 SSH keepalive fails, or after 8 hours.
 
-Every session logs `ssh session opening` and `ssh session closed` at info level, with the host,
-target id, secret id, actor id and (on close) the reason. Failures log `ssh session failed` at
-error level with the reason. Keys and passphrases are never logged.
+`CreateSession` logs `ssh session ticket issued` at info level with the session id, the target's
+host, port and id, the secret id, the actor id and the number of pinned host keys. When the browser
+redeems the ticket the broker logs `ssh session opening`, then `ssh session open step` at info level
+for each step it reaches, with the step's own duration (`step_ms`) and the time since the ticket was
+redeemed (`elapsed_ms`):
+
+| `step` | Reached when |
+|---|---|
+| `key revealed` | The vault returned the key (reference tickets only). |
+| `tcp connected` | The TCP connect to the target succeeded. |
+| `ssh banner received` | The target sent its SSH version line. |
+| `host key verified` | The target's host key matched a pin. |
+| `authenticated` | The target accepted the key. |
+| `shell started` | The PTY and the shell are up. |
+| `upgraded` | The browser's WebSocket is open and the session is live. |
+
+The last step logged is where a stalled or failed open stopped. A failed open logs `ssh session open
+failed` at error level with the failed `step` (`reveal`, `key`, `connect`, `handshake`, `host key`,
+`auth` or `shell`), the `reason` the browser is shown, the error and the durations; `ssh session
+closed` follows with the reason. Every step is bounded (see [the API](api.md#websocket)): an open never
+waits more than 45 seconds. The info lines need `LOG_LEVEL=info` or lower; at the production default
+(`error`) only the failures show. Keys and passphrases are never logged.
 
 Common close reasons, which also appear in the `session.end` audit event:
 
 | Reason | Meaning |
 |---|---|
 | `closed` | The browser or the target closed the session, or a liveness check ended it. |
-| `vault reveal failed` | The vault refused the actor or failed; check the vault's audit log. |
-| `key parse error` | The stored key isn't a valid private key, or its passphrase is wrong. |
+| `couldn't get the key: ...` | The vault didn't answer, refused the actor or failed; check the vault's logs and audit log. |
+| `the stored key ...` | The stored key isn't a valid private key, or its passphrase is wrong or missing. |
 | `host key not pinned for this target` | The target has no SSH host keys pinned in the vault. |
 | `host key mismatch` | The host presented a key that isn't pinned for the target. |
-| `ssh dial failed` | The target is unreachable, or rejected the user or the key. |
+| `can't reach <host>:<port>: ...`, `can't find <host> in DNS` | The broker's pod can't connect to the target: check DNS, routing and firewalls from the cluster to the target. |
+| `<host>:<port> didn't finish the SSH handshake in 15s` | The target took the TCP connection but its SSH server never finished: a wedged `sshd`, a `MaxStartups` limit, or a middlebox holding the connection. |
+| `<host>:<port> refused the key for <user>` | The target rejected the user or the key; check the user's `authorized_keys` on the target. |
+| `<host>:<port> didn't start a shell ...`, `... refused a shell: ...` | The target refused or never answered the session, PTY or shell request for this user. |
 | `ws upgrade failed` | The browser's request wasn't a valid WebSocket upgrade. |
-| `pty request failed`, `shell start failed` | The target refused a PTY or a shell for this user. |
 
 ## Host key refusals
 
