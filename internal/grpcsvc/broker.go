@@ -9,6 +9,7 @@ import (
 
 	log "github.com/Bugs5382/go-log"
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,6 +21,17 @@ import (
 )
 
 var logger = log.New("sshbroker-grpc")
+
+// ErrorDomain is the google.rpc.ErrorInfo domain of the broker's coded
+// refusals; the gateway passes reasons in a sneakers.* domain to its clients.
+const ErrorDomain = "sneakers.sshbroker"
+
+// ReasonHostKeyNotPinned is the refusal reason for a target with no pinned
+// SSH host key, and HostKeyNotPinnedMessage its one-line message.
+const (
+	ReasonHostKeyNotPinned  = "HOST_KEY_NOT_PINNED"
+	HostKeyNotPinnedMessage = "host key not pinned for this target: an admin pins it on the target first; no connection was made"
+)
 
 // Broker implements sshbrokerv1.SSHBrokerServiceServer. It issues single-use
 // WS tickets backed by an in-memory session.Store; key material never
@@ -67,6 +79,12 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 	port, err := validateCreate(req)
 	if err != nil {
 		return nil, err
+	}
+	// The dial refuses an unpinned host too, but only once the browser's
+	// WebSocket arrives; refusing here gives the reason with no ticket and
+	// no socket at all.
+	if len(req.GetHostKeys()) == 0 {
+		return nil, b.refuseUnpinned(ctx, req)
 	}
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
 
@@ -116,6 +134,23 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 		WsUrl:            b.wsBase,
 		ExpiresInSeconds: safeconv.Int32(expiresIn),
 	}, nil
+}
+
+// refuseUnpinned audits and logs a CreateSession for a target with no pinned
+// host key and returns its FailedPrecondition, with the reason and target id
+// in an ErrorInfo.
+func (b *Broker) refuseUnpinned(ctx context.Context, req *sshbrokerv1.CreateSessionRequest) error {
+	logger.Info().Str("actor_user_id", req.GetActorUserId()).Str("target_id", req.GetTargetId()).
+		Str("secret_id", req.GetSecretId()).Str("host", req.GetHost()).Msg("session refused: host key not pinned")
+	b.audit.Refused(ctx, req.GetActorUserId(), req.GetSecretId(), req.GetTargetId(), "host key not pinned", nil)
+	// WithDetails fails only for an OK status or a detail that can't be
+	// marshalled, neither of which this is.
+	st, _ := status.New(codes.FailedPrecondition, HostKeyNotPinnedMessage).WithDetails(&errdetails.ErrorInfo{
+		Domain:   ErrorDomain,
+		Reason:   ReasonHostKeyNotPinned,
+		Metadata: map[string]string{"target_id": req.GetTargetId()},
+	})
+	return st.Err()
 }
 
 // validateCreate checks a CreateSession request's inputs and returns the

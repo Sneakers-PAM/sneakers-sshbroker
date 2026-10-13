@@ -97,7 +97,9 @@ type Config struct {
 	// OpenTimeout bounds the whole open, from the ticket to the upgrade.
 	OpenTimeout time.Duration
 	// AllowedOrigins are the browser origins (normalized, see ParseOrigins)
-	// that may open a session. Empty refuses every browser origin.
+	// that may open a session from another origin. A page on the request's
+	// own origin (its Host header) may always open one; with the list empty,
+	// every other browser origin is refused.
 	AllowedOrigins []string
 }
 

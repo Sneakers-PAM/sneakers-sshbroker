@@ -25,6 +25,10 @@ option go_package = "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/sneakers/
 //     must be redeemed on that same pod (single-replica). Retained so an older
 //     gateway keeps working during a rollout; prefer the reference form.
 service SSHBrokerService {
+  // CreateSession issues the ticket. A target with no pinned host key
+  // (host_keys empty) is refused with FAILED_PRECONDITION and a
+  // google.rpc.ErrorInfo (domain sneakers.sshbroker, reason
+  // HOST_KEY_NOT_PINNED, metadata target_id), and no ticket is issued.
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
   // ScanHostKey connects to a target, reads the host key it offers during
   // the SSH handshake and returns it. It never authenticates and never opens
@@ -87,8 +91,9 @@ message CreateSessionRequest {
   ActorContext actor = 10;
   // host_keys are the target's pinned SSH host keys, one OpenSSH public key
   // per entry in authorized_keys form, copied from the vault target. The
-  // broker connects only when the host presents one of them: with none it
-  // refuses ("host key not pinned for this target"), and with others it
+  // broker connects only when the host presents one of them: with none,
+  // CreateSession refuses up front (HOST_KEY_NOT_PINNED) and the dial would
+  // refuse too ("host key not pinned for this target"); with others the dial
   // refuses ("host key mismatch"). They travel on the ticket, including the
   // shared-store copy (public keys, not secrets).
   repeated string host_keys = 11;
@@ -97,7 +102,11 @@ message CreateSessionRequest {
 message CreateSessionResponse {
   string session_id = 1;
   string ticket = 2;             // single-use, opaque
-  string ws_url = 3;             // base WS url (browser appends ?ticket=)
+  // The configured public WebSocket URL (SSHBROKER_PUBLIC_WS_URL). The web
+  // app takes its path and opens it on the page's own origin, so a box
+  // opened by its name, IPv4 or IPv6 address reaches the broker on that
+  // same address; the browser appends ?ticket=.
+  string ws_url = 3;
   int32 expires_in_seconds = 4;
 }
 

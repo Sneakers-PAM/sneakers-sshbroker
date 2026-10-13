@@ -31,6 +31,7 @@ func TestCreateSessionReturnsConsumableTicket(t *testing.T) {
 		ActorUserId: "actor-1",
 		SecretId:    "secret-1",
 		TargetId:    "target-1",
+		HostKeys:    []string{pinnedHostKey},
 	})
 	if err != nil {
 		t.Fatalf("CreateSession error: %v", err)
@@ -66,6 +67,7 @@ func TestCreateSessionReferencePath(t *testing.T) {
 		ActorUserId: "actor-1",
 		SecretId:    "secret-1",
 		TargetId:    "target-1",
+		HostKeys:    []string{pinnedHostKey},
 		Actor: &sshbrokerv1.ActorContext{
 			UserId:      "actor-1",
 			IsSiteAdmin: true,
@@ -159,6 +161,7 @@ func TestCreateSessionPort(t *testing.T) {
 		return &sshbrokerv1.CreateSessionRequest{
 			Host: "192.0.2.1", Port: port, Username: "root", PrivateKey: "PEM",
 			ActorUserId: "actor-1", SecretId: "secret-1", TargetId: "target-1",
+			HostKeys: []string{pinnedHostKey},
 		}
 	}
 

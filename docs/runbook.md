@@ -5,10 +5,11 @@
 - **Pin every SSH target's host keys** in the vault (`Target.ssh_host_keys`, set by a site admin)
   before anyone opens a session to it. The broker refuses a target with no pins and a host that
   presents any other key; see [Host key refusals](#host-key-refusals).
-- **Set the UI's origin.** The WebSocket endpoint accepts browsers only from
-  `SSHBROKER_ALLOWED_ORIGINS`, which defaults to the origin of `SSHBROKER_PUBLIC_WS_URL` (the UI
-  on the same host). Set it when the web app is served from another origin. Serve the endpoint
-  through an ingress that terminates TLS (`wss://`).
+- **Set the UI's origin.** The WebSocket endpoint accepts a browser on the request's own origin
+  (the page and the WebSocket on the same name, IPv4 or IPv6 address and port), plus the origins in
+  `SSHBROKER_ALLOWED_ORIGINS`, which defaults to the origin of `SSHBROKER_PUBLIC_WS_URL`. Set it
+  only when the web app is served from another origin. Serve the endpoint through an ingress that
+  terminates TLS (`wss://`) and passes the browser's `Host` header through (Traefik's default).
 - **Workload authentication on gRPC.** Set `WORKLOAD_OIDC_ISSUER` and
   `WORKLOAD_ALLOWED_SERVICEACCOUNTS=<namespace>/sneakers-gateway` (see
   [configuration](configuration.md#workload-authentication)); the broker won't start without them
@@ -151,6 +152,12 @@ Common close reasons, which also appear in the `session.end` audit event:
 | `<host>:<port> didn't start a shell ...`, `... refused a shell: ...` | The target refused or never answered the session, PTY or shell request for this user. |
 | `ws upgrade failed` | The browser's request wasn't a valid WebSocket upgrade. |
 
+`ssh session rejected: origin not allowed` at warn level, with the `Origin`, means a browser page
+on another origin (not this host's name or address, and not in `SSHBROKER_ALLOWED_ORIGINS`) tried to
+open a session. If tickets are issued but no `ssh session opening` or rejection line follows, the
+browser's WebSocket never reached the broker: check that the edge routes the WebSocket path to the
+broker for every name and address the box is opened by.
+
 ## Host key refusals
 
 The broker checks the host key during key exchange, before it offers the session's key, so a host
@@ -158,7 +165,9 @@ that fails the check never sees the credential. Each check logs `ssh host key ch
 with the target id, the presented key's SHA256 fingerprint, the number of pins and the outcome
 (`verified`, `mismatch` or `not pinned`); key material is never logged.
 
-- **`host key not pinned for this target`:** a site admin adds the host's public key to the
+- **`host key not pinned for this target`:** `CreateSession` refuses the session up front
+  (`HOST_KEY_NOT_PINNED`, logged as `session refused: host key not pinned` at info level, with a
+  `session.refuse` audit event), so no ticket or WebSocket is made. A site admin adds the host's public key to the
   target in the vault. Read it from the host itself (`ssh-keygen -lf
   /etc/ssh/ssh_host_ed25519_key.pub` there shows the fingerprint to compare), not from a scan
   across the network.
