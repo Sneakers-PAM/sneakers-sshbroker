@@ -48,6 +48,10 @@ const (
 //     must be redeemed on that same pod (single-replica). Retained so an older
 //     gateway keeps working during a rollout; prefer the reference form.
 type SSHBrokerServiceClient interface {
+	// CreateSession issues the ticket. A target with no pinned host key
+	// (host_keys empty) is refused with FAILED_PRECONDITION and a
+	// google.rpc.ErrorInfo (domain sneakers.sshbroker, reason
+	// HOST_KEY_NOT_PINNED, metadata target_id), and no ticket is issued.
 	CreateSession(ctx context.Context, in *CreateSessionRequest, opts ...grpc.CallOption) (*CreateSessionResponse, error)
 	// ScanHostKey connects to a target, reads the host key it offers during
 	// the SSH handshake and returns it. It never authenticates and never opens
@@ -107,6 +111,10 @@ func (c *sSHBrokerServiceClient) ScanHostKey(ctx context.Context, in *ScanHostKe
 //     must be redeemed on that same pod (single-replica). Retained so an older
 //     gateway keeps working during a rollout; prefer the reference form.
 type SSHBrokerServiceServer interface {
+	// CreateSession issues the ticket. A target with no pinned host key
+	// (host_keys empty) is refused with FAILED_PRECONDITION and a
+	// google.rpc.ErrorInfo (domain sneakers.sshbroker, reason
+	// HOST_KEY_NOT_PINNED, metadata target_id), and no ticket is issued.
 	CreateSession(context.Context, *CreateSessionRequest) (*CreateSessionResponse, error)
 	// ScanHostKey connects to a target, reads the host key it offers during
 	// the SSH handshake and returns it. It never authenticates and never opens

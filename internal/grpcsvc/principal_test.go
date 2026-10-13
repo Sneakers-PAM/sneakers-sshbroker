@@ -87,7 +87,8 @@ func TestCreateSessionAcceptsHumanPrincipal(t *testing.T) {
 	b := NewBroker(store, audit.New(rec), "ws://localhost:9097/ssh/session")
 	resp, err := b.CreateSession(context.Background(), &sshbrokerv1.CreateSessionRequest{
 		Host: "192.0.2.1", Port: 22, Username: "root", ActorUserId: "actor-1", SecretId: "secret-1",
-		Actor: &sshbrokerv1.ActorContext{UserId: "actor-1", PrincipalKind: sshbrokerv1.PrincipalKind_PRINCIPAL_KIND_HUMAN},
+		HostKeys: []string{pinnedHostKey},
+		Actor:    &sshbrokerv1.ActorContext{UserId: "actor-1", PrincipalKind: sshbrokerv1.PrincipalKind_PRINCIPAL_KIND_HUMAN},
 	})
 	if err != nil || resp.GetTicket() == "" {
 		t.Fatalf("human refused: resp=%v err=%v", resp, err)

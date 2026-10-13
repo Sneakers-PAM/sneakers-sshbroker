@@ -198,8 +198,9 @@ type CreateSessionRequest struct {
 	Actor *ActorContext `protobuf:"bytes,10,opt,name=actor,proto3" json:"actor,omitempty"`
 	// host_keys are the target's pinned SSH host keys, one OpenSSH public key
 	// per entry in authorized_keys form, copied from the vault target. The
-	// broker connects only when the host presents one of them: with none it
-	// refuses ("host key not pinned for this target"), and with others it
+	// broker connects only when the host presents one of them: with none,
+	// CreateSession refuses up front (HOST_KEY_NOT_PINNED) and the dial would
+	// refuse too ("host key not pinned for this target"); with others the dial
 	// refuses ("host key mismatch"). They travel on the ticket, including the
 	// shared-store copy (public keys, not secrets).
 	HostKeys      []string `protobuf:"bytes,11,rep,name=host_keys,json=hostKeys,proto3" json:"host_keys,omitempty"`
@@ -315,11 +316,15 @@ func (x *CreateSessionRequest) GetHostKeys() []string {
 }
 
 type CreateSessionResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	SessionId        string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Ticket           string                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`            // single-use, opaque
-	WsUrl            string                 `protobuf:"bytes,3,opt,name=ws_url,json=wsUrl,proto3" json:"ws_url,omitempty"` // base WS url (browser appends ?ticket=)
-	ExpiresInSeconds int32                  `protobuf:"varint,4,opt,name=expires_in_seconds,json=expiresInSeconds,proto3" json:"expires_in_seconds,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Ticket    string                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"` // single-use, opaque
+	// The configured public WebSocket URL (SSHBROKER_PUBLIC_WS_URL). The web
+	// app takes its path and opens it on the page's own origin, so a box
+	// opened by its name, IPv4 or IPv6 address reaches the broker on that
+	// same address; the browser appends ?ticket=.
+	WsUrl            string `protobuf:"bytes,3,opt,name=ws_url,json=wsUrl,proto3" json:"ws_url,omitempty"`
+	ExpiresInSeconds int32  `protobuf:"varint,4,opt,name=expires_in_seconds,json=expiresInSeconds,proto3" json:"expires_in_seconds,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }

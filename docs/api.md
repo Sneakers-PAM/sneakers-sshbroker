@@ -80,7 +80,13 @@ forms.
 `host_keys` carries the target's pinned SSH host keys, one OpenSSH public key per entry in
 authorized_keys form, as the vault returns them in `Target.ssh_host_keys`. They travel on the
 ticket (the Redis copy too; they are public keys). An entry that doesn't parse, or carries options,
-returns `InvalidArgument`. An empty list is accepted here, and the connection is then refused.
+returns `InvalidArgument`. An empty list means the target has no pinned host key: after the input
+checks, `CreateSession` returns `FailedPrecondition` with the message `host key not pinned for this
+target: an admin pins it on the target first; no connection was made` and a `google.rpc.ErrorInfo`
+(domain `sneakers.sshbroker`, reason `HOST_KEY_NOT_PINNED`, metadata `target_id`). No ticket is
+issued, and a `session.refuse` audit event is sent with the reason `host key not pinned`. The
+gateway passes the reason to the web app, which shows it without opening a WebSocket. The dial
+still checks the pins, so a ticket that somehow has none is refused there too.
 
 Only a person in the web app starts a brokered session. `actor.principal_kind` (the same values
 as the vault's `PrincipalKind`) is `PRINCIPAL_KIND_HUMAN` when unset; any other kind
@@ -95,7 +101,9 @@ A missing field returns `InvalidArgument`. `port` 0 defaults to 22 (the SSH conv
 outside 1-65535 returns `InvalidArgument`. `ttl_seconds` 0 or less means 30 seconds.
 
 The response carries `session_id`, the `ticket`, `ws_url` (`SSHBROKER_PUBLIC_WS_URL`) and
-`expires_in_seconds`. A `session.start` audit event is sent before the response.
+`expires_in_seconds`. The web app uses only the path of `ws_url` and opens it on the page's own
+origin, so the terminal works whether the box was opened by its name, an IPv4 address or an IPv6
+address. A `session.start` audit event is sent before the response.
 
 ### ScanHostKey
 
@@ -123,11 +131,21 @@ Every call that gets past the input checks sends a `hostkey.scan` audit event.
 The browser connects to `ws_url` with `?ticket=<ticket>`. The endpoint is served at both
 `/ssh/session` and `/proto/ssh/session`, so it works behind an ingress that keeps a `/proto` prefix.
 
-First the broker checks the request's `Origin` header against the allowed origins
-(`SSHBROKER_ALLOWED_ORIGINS`, see [configuration](configuration.md)). A browser origin that isn't
-listed gets `403 origin not allowed`, and the ticket is left unused. A request with no `Origin`
-header isn't from a browser, so it can't be a cross-site WebSocket hijack, and it goes on to the
-ticket check.
+First the broker checks the request's `Origin` header. It allows:
+
+- an origin listed in `SSHBROKER_ALLOWED_ORIGINS` (see [configuration](configuration.md));
+- the page's own origin: an `Origin` whose host and port are the request's own `Host` header. This
+  is how a box opened by its name, its IPv4 address or its IPv6 address (`https://[2001:db8::1]`)
+  reaches its terminal. Names compare case-insensitively, an IPv6 address compares by value (two
+  spellings of one address match), and a missing port is the origin scheme's default (443 for
+  `https`, 80 for `http`). An address with a zone id (`fe80::1%eth0`) never matches: browsers
+  don't send one in an `Origin`, and the box isn't served on a link-local address. The edge must
+  pass the browser's `Host` header through, as Traefik does by default.
+
+Any other browser origin, another site's name or address included, gets `403 origin not allowed`,
+and the ticket is left unused. A request with no `Origin` header isn't from a browser, so it can't
+be a cross-site WebSocket hijack, and it goes on to the ticket check. The ticket is what grants the
+session either way.
 
 Before the upgrade the broker then consumes the ticket, reveals the key when the ticket is a
 reference, dials the target, runs the SSH handshake and authentication, and starts the PTY and the
@@ -167,7 +185,7 @@ Before any of that, two failures are plain HTTP errors with no upgrade, and they
 
 | Status | Body | Cause |
 |---|---|---|
-| 403 | `origin not allowed` | A browser `Origin` that isn't in `SSHBROKER_ALLOWED_ORIGINS`. The ticket stays unused. |
+| 403 | `origin not allowed` | A browser `Origin` that isn't in `SSHBROKER_ALLOWED_ORIGINS` and isn't the request's own `Host`. The ticket stays unused. |
 | 403 | `invalid or expired ticket` | No ticket, an unknown or used ticket, or one past its time to live. |
 
 After the upgrade:
