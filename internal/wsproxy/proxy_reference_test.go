@@ -22,9 +22,10 @@ import (
 // the actor it was called with so tests can assert the actor was carried across
 // pods.
 type fakeVault struct {
-	keyBySecret map[string]string
-	gotActor    session.Actor
-	gotSecret   string
+	keyBySecret      map[string]string
+	passwordBySecret map[string]string
+	gotActor         session.Actor
+	gotSecret        string
 }
 
 func (f *fakeVault) FetchKey(_ context.Context, sess *session.Session) (privateKey, passphrase []byte, err error) {
@@ -35,6 +36,16 @@ func (f *fakeVault) FetchKey(_ context.Context, sess *session.Session) (privateK
 		return nil, nil, context.Canceled // stand-in for a vault error
 	}
 	return []byte(pem), nil, nil
+}
+
+func (f *fakeVault) FetchPassword(_ context.Context, sess *session.Session) (password []byte, err error) {
+	f.gotActor = sess.Actor
+	f.gotSecret = sess.SecretID
+	pw, ok := f.passwordBySecret[sess.SecretID]
+	if !ok {
+		return nil, context.Canceled // stand-in for a vault error
+	}
+	return []byte(pw), nil
 }
 
 // sharedRedisPods returns two independent RedisStore instances over one
@@ -114,6 +125,44 @@ func TestReferenceCrossReplicaRedeem(t *testing.T) {
 	}
 	if vault.gotActor.UserID != "user-9" || len(vault.gotActor.GroupNames) != 1 {
 		t.Fatalf("actor not carried to vault fetch: %+v", vault.gotActor)
+	}
+}
+
+// TestReferencePasswordCrossReplicaRedeem is TestReferenceCrossReplicaRedeem
+// for a password secret: the ticket carries only the reference (secret id +
+// actor) and AuthKind; the redeeming pod fetches the password from the
+// (fake) vault via FetchPassword and authenticates with it.
+func TestReferencePasswordCrossReplicaRedeem(t *testing.T) {
+	host, port, hostPin, attempts := startPasswordEchoSSHServer(t, "tester", "hunter2")
+
+	mintPod, wsPod := sharedRedisPods(t)
+	_, ticket, _, _ := mintPod.Create(session.Params{
+		Host:        host,
+		Port:        int32(port),
+		Username:    "tester",
+		AuthKind:    session.AuthKindPassword,
+		SecretID:    "sec-pw-1",
+		ActorUserID: "user-9",
+		Actor:       session.Actor{UserID: "user-9"},
+		HostKeys:    []string{hostPin},
+		TTL:         5 * time.Second,
+	})
+
+	vault := &fakeVault{passwordBySecret: map[string]string{"sec-pw-1": "hunter2"}}
+	srv := httptest.NewServer(Handler(wsPod, nil, vault))
+	defer srv.Close()
+
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURLFor(srv, ticket), nil)
+	if err != nil {
+		t.Fatalf("second pod could not redeem reference ticket: %v (resp=%v)", err, resp)
+	}
+	defer func() { _ = conn.Close() }()
+	assertEcho(t, conn)
+	if vault.gotSecret != "sec-pw-1" {
+		t.Fatalf("vault fetched wrong secret: %q", vault.gotSecret)
+	}
+	if n := attempts.Load(); n != 1 {
+		t.Fatalf("password offered %d times, want exactly 1", n)
 	}
 }
 

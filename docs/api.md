@@ -62,20 +62,27 @@ no token.
 
 Registers a pending session and returns its ticket. It needs `host`, `username` and
 `actor_user_id` (the user, recorded in the audit events; it is not used for authorization), plus
-the key in one of two forms:
+the credential in one of these forms:
 
-- **Reference** (preferred): leave `private_key` empty and send `secret_id` and `actor`
-  (`actor.user_id` is required). The ticket holds only the reference. When the browser connects,
-  the broker calls the vault's `RevealSecretField` for the `privateKey` field, and the
-  `passphrase` field if there is one, passing `actor` through, so the vault applies its own access
-  rules and audits the reveal. With `REDIS_URL` set, the ticket goes to Redis and any replica can
-  redeem it.
+- **Reference, key** (preferred): leave `private_key` empty and `password_auth` unset, and send
+  `secret_id` and `actor` (`actor.user_id` is required). The ticket holds only the reference. When
+  the browser connects, the broker calls the vault's `RevealSecretField` for the `privateKey`
+  field, and the `passphrase` field if there is one, passing `actor` through, so the vault applies
+  its own access rules and audits the reveal. With `REDIS_URL` set, the ticket goes to Redis and
+  any replica can redeem it.
+- **Reference, password**: set `password_auth = true` and send `secret_id` and `actor`, the same as
+  the key reference form (and leave `private_key` empty: the two are mutually exclusive and
+  `password_auth` with a `private_key` returns `InvalidArgument`). When the browser connects, the
+  broker reveals the secret's `password` field instead of `privateKey`/`passphrase`, and the dial
+  offers the target SSH password auth and keyboard-interactive (answering a single prompt with the
+  password) instead of publickey, so a target that only speaks one of the two still works. There is
+  no inline form for a password secret: it is always revealed by reference.
 
-With `REDIS_URL` set and Redis not answering yet, `CreateSession` returns `Unavailable` for both
-forms.
-- **Inline**: send `private_key` (PEM) and, if it has one, `passphrase`. The ticket and the key stay
-  in the memory of the replica that minted it, so the browser must reach that same replica. This
-  form is kept for older callers.
+With `REDIS_URL` set and Redis not answering yet, `CreateSession` returns `Unavailable` for every
+form.
+- **Inline, key**: send `private_key` (PEM) and, if it has one, `passphrase`. The ticket and the key
+  stay in the memory of the replica that minted it, so the browser must reach that same replica.
+  This form is kept for older callers.
 
 `host_keys` carries the target's pinned SSH host keys, one OpenSSH public key per entry in
 authorized_keys form, as the vault returns them in `Target.ssh_host_keys`. They travel on the
@@ -155,7 +162,7 @@ and so is the whole open:
 
 | Step | Bound |
 |---|---|
-| The vault reveal of the key | 10 s |
+| The vault reveal of the credential (key or password) | 10 s |
 | The TCP connect to the target | 15 s |
 | The SSH banner, key exchange, host-key check and authentication | 15 s |
 | The session channel, PTY and shell | 15 s |
@@ -170,11 +177,13 @@ response body. The same sentence is the `session.end` reason.
 |---|---|---|
 | 1008, or 502 | `host key not pinned for this target` | The ticket has no `host_keys`. |
 | 1008, or 502 | `host key mismatch` | The host presented a key that isn't one of the `host_keys`. |
-| 1011, or 502 | `couldn't get the key: the vault didn't answer in 10s`, `... the vault refused access to it`, `... the vault isn't reachable` | The reveal timed out or the vault refused or failed it. |
-| 1011, or 500 | `the stored key isn't a private key the broker can read`, `the stored passphrase doesn't open the stored key` | The key could not be parsed. |
+| 1011, or 502 | `couldn't get the key: the vault didn't answer in 10s`, `... the vault refused access to it`, `... the vault isn't reachable`; the same sentences with `couldn't get the password: ...` for a password secret | The reveal timed out or the vault refused or failed it. |
+| 1011, or 500 | `the stored key isn't a private key the broker can read`, `the stored passphrase doesn't open the stored key` | The key could not be parsed (key secrets only). |
 | 1011, or 502 | `can't reach <host>:<port>: connection timed out`, `... connection refused`, `... no route to host`, `can't find <host> in DNS` | The TCP connect failed. |
 | 1011, or 502 | `<host>:<port> didn't finish the SSH handshake in 15s` | The target took the connection but never finished the handshake. |
-| 1011, or 502 | `<host>:<port> refused the key for <user>` | Authentication failed. |
+| 1011, or 502 | `<host>:<port> refused the key for <user>` | A key secret's authentication was refused. |
+| 1011, or 502 | `the target refused the password` | A password secret's authentication was refused, whether the target took password or keyboard-interactive. One attempt only: the broker never retries a wrong password. |
+| 1011, or 502 | `the target asked for more than a password` | A password secret's target asked for a second keyboard-interactive step (a TOTP code, say) after the password. Out of scope here: see sneakers-sshbroker#68. |
 | 1011, or 502 | `<host>:<port> didn't start a shell in 15s`, `<host>:<port> refused a shell: ...` | The session, PTY or shell request stalled or was refused. |
 
 A step cut short by the whole open's bound says `within the 45s open limit` in place of its own
@@ -207,9 +216,9 @@ failed one is logged and the session carries on. No key material is ever put in 
 
 | Action | When | Attributes |
 |---|---|---|
-| `session.start` | `CreateSession` | `host`, `target_id` |
+| `session.start` | `CreateSession` | `host`, `target_id`, `auth_kind` (`publickey` or `password`, the credential the request asked for) |
 | `session.refuse` | `CreateSession` refused for its principal kind, or any call refused by the caller check | `target_id`, `reason`, and `principal_kind`, or `caller`, `method` and `code` |
-| `session.end` | the session ends, or fails at any point after its ticket was consumed (a host-key refusal included, with its reason) | `target_id`, `duration_ms`, `reason` |
+| `session.end` | the session ends, or fails at any point after its ticket was consumed (a host-key refusal included, with its reason) | `target_id`, `duration_ms`, `reason`, `auth_method` (`publickey`, `password` or `keyboard-interactive`, whichever actually authenticated; empty if auth never completed) |
 | `hostkey.scan` | `ScanHostKey`, with the target id as the subject and not marked sensitive (no secret is involved) | `target_id`, `host`, `outcome` (`ok`, `refused`, `rate_limited`, `unreachable` or `handshake_failed`), and `port`, `key_type`, `fingerprint_sha256` or `principal_kind` as they apply; never the key itself |
 
 ## Workload authentication

@@ -53,19 +53,17 @@ func (t *target) close() {
 	_ = t.client.Close()
 }
 
-// openTarget runs every fallible step of the open in order: the key reveal,
-// the key parse, the TCP connect, the SSH banner, key exchange and host-key
-// check, the auth, and the shell. Each step has its own bound and ctx
-// bounds the whole open. Each step reached is logged with its duration.
+// openTarget runs every fallible step of the open in order: the credential
+// reveal, the auth method setup (key parse, or password), the TCP connect,
+// the SSH banner, key exchange and host-key check, the auth, and the shell.
+// Each step has its own bound and ctx bounds the whole open. Each step
+// reached is logged with its duration.
 func openTarget(ctx context.Context, cfg Config, keys KeyFetcher, sess *session.Session, st *steps) (*target, *openError) {
-	if !sess.HasKey() {
-		if oe := revealKey(ctx, cfg, keys, sess); oe != nil {
-			return nil, oe
-		}
-		st.done("key revealed")
+	if oe := revealCredential(ctx, cfg, keys, sess, st); oe != nil {
+		return nil, oe
 	}
 
-	signer, err := parseSigner(sess)
+	auth, err := authMethods(sess)
 	if err != nil {
 		return nil, &openError{step: "key", msg: keyParseFailure(err), err: err, status: http.StatusInternalServerError}
 	}
@@ -73,7 +71,7 @@ func openTarget(ctx context.Context, cfg Config, keys KeyFetcher, sess *session.
 	pins, pinAlgos := parsePins(sess)
 	cc := &ssh.ClientConfig{
 		User:              sess.Username,
-		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:              auth,
 		HostKeyCallback:   pinnedHostKeyCallback(sess, pins),
 		HostKeyAlgorithms: pinAlgos,
 	}
@@ -92,9 +90,32 @@ func openTarget(ctx context.Context, cfg Config, keys KeyFetcher, sess *session.
 	return t, nil
 }
 
-// revealKey fetches a reference-path session's key material from the vault
-// and installs it on the session, so the teardown still zeroizes it.
-func revealKey(ctx context.Context, cfg Config, keys KeyFetcher, sess *session.Session) *openError {
+// revealCredential fetches a reference-path session's credential from the
+// vault and installs it on the session, so the teardown still zeroizes it. An
+// inline session (HasKey/HasPassword already true) skips the fetch and logs
+// no step, exactly as the key-only path always has.
+func revealCredential(ctx context.Context, cfg Config, keys KeyFetcher, sess *session.Session, st *steps) *openError {
+	if sess.AuthKind == session.AuthKindPassword {
+		if sess.HasPassword() {
+			return nil
+		}
+		if keys == nil {
+			return &openError{step: "reveal", msg: "couldn't get the password: the broker has no vault client", err: errNoKeyFetcher, status: http.StatusBadGateway}
+		}
+		rctx, cancel := context.WithTimeout(ctx, cfg.RevealTimeout)
+		defer cancel()
+		pass, err := keys.FetchPassword(rctx, sess)
+		if err != nil {
+			return &openError{step: "reveal", msg: "couldn't get the password: " + vaultFailure(ctx, rctx, cfg, err), err: err, status: http.StatusBadGateway}
+		}
+		sess.SetPasswordMaterial(pass)
+		st.done("password revealed")
+		return nil
+	}
+
+	if sess.HasKey() {
+		return nil
+	}
 	if keys == nil {
 		return &openError{step: "reveal", msg: "couldn't get the key: the broker has no vault client", err: errNoKeyFetcher, status: http.StatusBadGateway}
 	}
@@ -105,7 +126,74 @@ func revealKey(ctx context.Context, cfg Config, keys KeyFetcher, sess *session.S
 		return &openError{step: "reveal", msg: "couldn't get the key: " + vaultFailure(ctx, rctx, cfg, err), err: err, status: http.StatusBadGateway}
 	}
 	sess.SetKeyMaterial(priv, pass)
+	st.done("key revealed")
 	return nil
+}
+
+// authMethods builds the SSH auth methods to offer the target for sess's
+// AuthKind: a publickey signer for a key session, or password +
+// keyboard-interactive (answering a single prompt with the password) for a
+// password session, so a target that only speaks one of the two still
+// works. Either way the target sees one attempt per method; the broker
+// retries neither, so a wrong credential can never loop against the target.
+func authMethods(sess *session.Session) ([]ssh.AuthMethod, error) {
+	if sess.AuthKind == session.AuthKindPassword {
+		password := sess.PasswordBytes()
+		tracker := newAuthTracker(sess)
+		return []ssh.AuthMethod{
+			ssh.PasswordCallback(func() (string, error) {
+				tracker.record("password")
+				return string(password), nil
+			}),
+			ssh.KeyboardInteractive(passwordKeyboardInteractive(password, tracker)),
+		}, nil
+	}
+	signer, err := parseSigner(sess)
+	if err != nil {
+		return nil, err
+	}
+	sess.AuthMethodUsed = "publickey"
+	return []ssh.AuthMethod{ssh.PublicKeys(signer)}, nil
+}
+
+// authTracker records which password-session auth method last answered a
+// server challenge, so the one that actually succeeded (the last one
+// attempted before the handshake returns) ends up on the session for the
+// audit. Never records the password itself.
+type authTracker struct{ sess *session.Session }
+
+func newAuthTracker(sess *session.Session) *authTracker { return &authTracker{sess: sess} }
+
+func (a *authTracker) record(method string) { a.sess.AuthMethodUsed = method }
+
+// errTooManyPrompts is returned by the keyboard-interactive challenge when the
+// target asks for more than a single password prompt (a TOTP step, for
+// example). Answering with the password again would send it as the wrong
+// answer to a different question, so the open fails here instead.
+// sneakers-sshbroker#68 tracks adding real multi-step handling.
+var errTooManyPrompts = errors.New("the target asked for more than a password")
+
+// passwordKeyboardInteractive answers exactly one single-question
+// keyboard-interactive round with the password. A round with no questions
+// (common as a PAM acknowledgment, before or after the real one) is
+// answered with no answers, same as a real SSH client does, and never
+// counts as the password round. A second round that DOES ask something, or
+// a round asking more than one question, means the target wants more than
+// a password (see errTooManyPrompts) and is refused rather than answered
+// wrong.
+func passwordKeyboardInteractive(password []byte, tracker *authTracker) ssh.KeyboardInteractiveChallenge {
+	answered := false
+	return func(_, _ string, questions []string, _ []bool) ([]string, error) {
+		if len(questions) == 0 {
+			return []string{}, nil
+		}
+		if answered || len(questions) != 1 {
+			return nil, errTooManyPrompts
+		}
+		answered = true
+		tracker.record("keyboard-interactive")
+		return []string{string(password)}, nil
+	}
 }
 
 func vaultFailure(open, step context.Context, cfg Config, err error) string {
@@ -233,9 +321,14 @@ func handshakeFailure(ctx context.Context, cfg Config, sess *session.Session, ad
 	if msg, ok := hostKeyRefusal(err); ok {
 		return &openError{step: "host key", msg: msg, err: err, status: http.StatusBadGateway, hostKey: true}
 	}
+	if errors.Is(err, errTooManyPrompts) {
+		return &openError{step: "auth", msg: errTooManyPrompts.Error(), err: err, status: http.StatusBadGateway}
+	}
 	step, msg := "handshake", ""
 	var ne net.Error
 	switch {
+	case strings.Contains(err.Error(), "unable to authenticate") && sess.AuthKind == session.AuthKindPassword:
+		step, msg = "auth", "the target refused the password"
 	case strings.Contains(err.Error(), "unable to authenticate"):
 		step, msg = "auth", fmt.Sprintf("%s refused the key for %s", address, sess.Username)
 	case ctx.Err() != nil, errors.As(err, &ne) && ne.Timeout():

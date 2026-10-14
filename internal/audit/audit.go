@@ -39,9 +39,9 @@ func New(client auditv1.AuditServiceClient) *Emitter {
 	return &Emitter{client: client}
 }
 
-// Start records a session.start audit event. Best-effort: errors are logged
-// and swallowed.
-func (e *Emitter) Start(ctx context.Context, actorUserID, secretID, targetID, host string) {
+// Start records a session.start audit event, with the auth kind requested
+// ("publickey" or "password"). Best-effort: errors are logged and swallowed.
+func (e *Emitter) Start(ctx context.Context, actorUserID, secretID, targetID, host, authKind string) {
 	e.emit(ctx, &auditv1.RecordEventRequest{
 		Tier:        auditv1.Tier_TIER_AUDIT,
 		Action:      "session.start",
@@ -51,14 +51,17 @@ func (e *Emitter) Start(ctx context.Context, actorUserID, secretID, targetID, ho
 		Attributes: map[string]string{
 			"host":      host,
 			"target_id": targetID,
+			"auth_kind": authKind,
 		},
 		OccurredAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
-// End records a session.end audit event. Best-effort: errors are logged and
-// swallowed.
-func (e *Emitter) End(ctx context.Context, actorUserID, secretID, targetID string, dur time.Duration, reason string) {
+// End records a session.end audit event, with the auth method that actually
+// authenticated the session ("publickey", "password" or
+// "keyboard-interactive"; empty when auth never completed). Best-effort:
+// errors are logged and swallowed.
+func (e *Emitter) End(ctx context.Context, actorUserID, secretID, targetID string, dur time.Duration, reason, authMethod string) {
 	e.emit(ctx, &auditv1.RecordEventRequest{
 		Tier:        auditv1.Tier_TIER_AUDIT,
 		Action:      "session.end",
@@ -69,6 +72,7 @@ func (e *Emitter) End(ctx context.Context, actorUserID, secretID, targetID strin
 			"target_id":   targetID,
 			"duration_ms": strconv.FormatInt(dur.Milliseconds(), 10),
 			"reason":      reason,
+			"auth_method": authMethod,
 		},
 		OccurredAt: time.Now().UTC().Format(time.RFC3339),
 	})

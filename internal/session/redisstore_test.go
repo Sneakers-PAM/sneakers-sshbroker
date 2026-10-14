@@ -132,6 +132,27 @@ func TestRedisNeverStoresKey(t *testing.T) {
 	}
 }
 
+// TestRedisTicketCarriesAuthKind proves the password/key selector travels
+// across replicas, like every other non-sensitive reference field, while the
+// password itself never does.
+func TestRedisTicketCarriesAuthKind(t *testing.T) {
+	_, newPod := newMiniRedis(t)
+	mint, redeem := newPod(), newPod()
+	p := refParams()
+	p.AuthKind = AuthKindPassword
+	_, ticket, _, _ := mint.Create(p)
+	sess, ok := redeem.Consume(ticket)
+	if !ok {
+		t.Fatal("ticket not redeemable on second pod")
+	}
+	if sess.AuthKind != AuthKindPassword {
+		t.Fatalf("AuthKind after redeem = %v, want AuthKindPassword", sess.AuthKind)
+	}
+	if sess.HasPassword() {
+		t.Fatal("reference ticket must not carry password material")
+	}
+}
+
 // TestRedisTTLExpiry proves the ticket key expires with its TTL.
 func TestRedisTTLExpiry(t *testing.T) {
 	mr, newPod := newMiniRedis(t)

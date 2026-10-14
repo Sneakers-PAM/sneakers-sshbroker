@@ -157,6 +157,11 @@ func (hangingVault) FetchKey(ctx context.Context, _ *session.Session) ([]byte, [
 	return nil, nil, ctx.Err()
 }
 
+func (hangingVault) FetchPassword(ctx context.Context, _ *session.Session) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
 // recordingAudit keeps every audit event the broker records.
 type recordingAudit struct {
 	auditv1.AuditServiceClient
@@ -173,13 +178,19 @@ func (r *recordingAudit) RecordEvent(_ context.Context, in *auditv1.RecordEventR
 
 func (r *recordingAudit) endReason(t *testing.T) string {
 	t.Helper()
+	return r.endAttr(t, "reason")
+}
+
+// endAttr waits for a session.end event and returns one of its attributes.
+func (r *recordingAudit) endAttr(t *testing.T, key string) string {
+	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		r.mu.Lock()
 		for _, e := range r.events {
 			if e.GetAction() == "session.end" {
 				r.mu.Unlock()
-				return e.GetAttributes()["reason"]
+				return e.GetAttributes()[key]
 			}
 		}
 		r.mu.Unlock()

@@ -25,11 +25,12 @@ import (
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 )
 
-// Field keys for the SSH secret type: the private key and its optional
-// passphrase.
+// Field keys for the SSH secret types: the private key and its optional
+// passphrase (type-ssh-key), or the password (type-unix-ssh).
 const (
 	fieldPrivateKey = "privateKey"
 	fieldPassphrase = "passphrase"
+	fieldPassword   = "password"
 )
 
 // logger is package-scoped so callers never import zerolog directly. Only
@@ -90,6 +91,26 @@ func (v *Client) FetchKey(ctx context.Context, sess *session.Session) (privateKe
 	}
 
 	return []byte(pk.GetValue()), passphrase, nil
+}
+
+// FetchPassword reveals the session's password (type-unix-ssh secret) using
+// the session's actor. Any error -- including an RBAC PermissionDenied -- is
+// fatal, so an unauthorized redeem never dials.
+func (v *Client) FetchPassword(ctx context.Context, sess *session.Session) (password []byte, err error) {
+	pw, err := v.c.RevealSecretField(ctx, &vaultv1.RevealSecretFieldRequest{
+		Actor:    actorContext(sess.Actor),
+		Id:       sess.SecretID,
+		FieldKey: fieldPassword,
+	})
+	if err != nil {
+		logger.Error().Err(err).
+			Str("secret_id", sess.SecretID).
+			Str("actor_user_id", sess.ActorUserID).
+			Str("reason", "reveal password failed").
+			Msg("vault reveal failed")
+		return nil, err
+	}
+	return []byte(pw.GetValue()), nil
 }
 
 // actorContext maps the broker-side actor to the vault's ActorContext.

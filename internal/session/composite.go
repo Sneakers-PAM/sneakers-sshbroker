@@ -17,11 +17,12 @@ var errSharedStoreRequired = errors.New("shared ticket store required but not at
 // still supporting inline keys and degrading gracefully when Redis is absent.
 //
 // Routing:
-//   - Create: a reference session (no inline key) goes to the shared store when
-//     one is configured, so any replica can redeem it. An inline-key session --
-//     or any session when there is no shared store -- goes to the local
-//     in-memory Store, since a private key must never enter the shared store.
-//     A required composite never puts a reference session in memory.
+//   - Create: a reference session (no inline key or password) goes to the
+//     shared store when one is configured, so any replica can redeem it. An
+//     inline-credential session -- or any session when there is no shared
+//     store -- goes to the local in-memory Store, since a credential must
+//     never enter the shared store. A required composite never puts a
+//     reference session in memory.
 //   - Consume: try the shared store first (the HA path), then fall back to
 //     local. Opaque random tickets never collide across the two.
 //
@@ -81,7 +82,7 @@ func (c *Composite) sharedStore() TicketStore {
 // comes back with id and ticket empty: the caller must never hand out a
 // ticket this composite did not actually persist.
 func (c *Composite) Create(p Params) (id, ticket string, expiresIn int, err error) {
-	if p.PrivateKey == "" {
+	if p.PrivateKey == "" && p.Password == "" {
 		if shared := c.sharedStore(); shared != nil {
 			return shared.Create(p)
 		}

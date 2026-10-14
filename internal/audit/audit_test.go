@@ -33,8 +33,8 @@ func TestEmitIsBoundedWhenAuditHangs(t *testing.T) {
 	e := New(hangingAudit{})
 	done := make(chan struct{})
 	go func() {
-		e.End(context.Background(), "user-1", "secret-1", "target-1", time.Second, "closed")
-		e.Start(context.Background(), "user-1", "secret-1", "target-1", "192.0.2.10")
+		e.End(context.Background(), "user-1", "secret-1", "target-1", time.Second, "closed", "publickey")
+		e.Start(context.Background(), "user-1", "secret-1", "target-1", "192.0.2.10", "publickey")
 		close(done)
 	}()
 	select {

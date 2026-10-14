@@ -203,7 +203,14 @@ type CreateSessionRequest struct {
 	// refuse too ("host key not pinned for this target"); with others the dial
 	// refuses ("host key mismatch"). They travel on the ticket, including the
 	// shared-store copy (public keys, not secrets).
-	HostKeys      []string `protobuf:"bytes,11,rep,name=host_keys,json=hostKeys,proto3" json:"host_keys,omitempty"`
+	HostKeys []string `protobuf:"bytes,11,rep,name=host_keys,json=hostKeys,proto3" json:"host_keys,omitempty"`
+	// password_auth marks a secret whose credential is a username + password
+	// (vault fields "username"/"password") rather than a private key. On the
+	// reference path the broker reveals "password" instead of
+	// "privateKey"/"passphrase", and offers the target SSH password auth and
+	// keyboard-interactive (answering a single prompt with the password)
+	// instead of publickey. Ignored on the inline path, which stays key-only.
+	PasswordAuth  bool `protobuf:"varint,12,opt,name=password_auth,json=passwordAuth,proto3" json:"password_auth,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -313,6 +320,13 @@ func (x *CreateSessionRequest) GetHostKeys() []string {
 		return x.HostKeys
 	}
 	return nil
+}
+
+func (x *CreateSessionRequest) GetPasswordAuth() bool {
+	if x != nil {
+		return x.PasswordAuth
+	}
+	return false
 }
 
 type CreateSessionResponse struct {
@@ -537,7 +551,7 @@ const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
 	"groupNames\x12K\n" +
 	"\x0eprincipal_kind\x18\x06 \x01(\x0e2$.sneakers.sshbroker.v1.PrincipalKindR\rprincipalKind\x12\x1f\n" +
 	"\vsession_ref\x18\f \x01(\tR\n" +
-	"sessionRef\"\xf2\x02\n" +
+	"sessionRef\"\x97\x03\n" +
 	"\x14CreateSessionRequest\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1a\n" +
@@ -554,7 +568,8 @@ const file_sneakers_sshbroker_v1_sshbroker_proto_rawDesc = "" +
 	"ttlSeconds\x129\n" +
 	"\x05actor\x18\n" +
 	" \x01(\v2#.sneakers.sshbroker.v1.ActorContextR\x05actor\x12\x1b\n" +
-	"\thost_keys\x18\v \x03(\tR\bhostKeys\"\x93\x01\n" +
+	"\thost_keys\x18\v \x03(\tR\bhostKeys\x12#\n" +
+	"\rpassword_auth\x18\f \x01(\bR\fpasswordAuth\"\x93\x01\n" +
 	"\x15CreateSessionResponse\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
