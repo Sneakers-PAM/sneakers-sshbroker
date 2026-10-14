@@ -63,17 +63,40 @@ type TicketStore interface {
 	Close()
 }
 
+// AuthKind selects which SSH credential a session carries and which auth
+// methods the open path offers the target. The zero value, AuthKindPublicKey,
+// is the only kind that existed before password secrets, so an older gateway
+// (or a test) that never sets it still gets the key-only behavior it always
+// had.
+type AuthKind int32
+
+const (
+	// AuthKindPublicKey authenticates with the session's private key
+	// (KeyBytes/PassphraseBytes). The default: back-compat with every
+	// session created before password secrets.
+	AuthKindPublicKey AuthKind = iota
+	// AuthKindPassword authenticates with the session's password
+	// (PasswordBytes), offering the target both SSH password auth and
+	// keyboard-interactive (answering a single prompt with the password).
+	AuthKindPassword
+)
+
 // Params describes a session to create. Key material arrives as strings
 // (from the gRPC request) and is copied into byte slices on the Session so
 // it can be zeroized independently of the caller's copy. On the reference
-// path PrivateKey/Passphrase are empty and SecretID + Actor identify the
-// key to fetch from the vault at redeem time.
+// path PrivateKey/Passphrase/Password are empty and SecretID + Actor identify
+// the credential to fetch from the vault at redeem time; AuthKind says which
+// vault fields (and which SSH auth methods) that fetch and the open path use.
 type Params struct {
-	Host        string
-	Port        int32
-	Username    string
-	PrivateKey  string
-	Passphrase  string
+	Host       string
+	Port       int32
+	Username   string
+	PrivateKey string
+	Passphrase string
+	// Password is the inline password credential (back-compat/tests), used
+	// only when AuthKind is AuthKindPassword.
+	Password    string
+	AuthKind    AuthKind
 	ActorUserID string
 	SecretID    string
 	TargetID    string
@@ -90,10 +113,12 @@ type Session struct {
 	Host     string
 	Port     int32
 	Username string
+	AuthKind AuthKind
 
 	id         string
 	privateKey []byte
 	passphrase []byte
+	password   []byte
 
 	Started     time.Time
 	ActorUserID string
@@ -101,6 +126,10 @@ type Session struct {
 	TargetID    string
 	Actor       Actor
 	HostKeys    []string
+	// AuthMethodUsed is set by the open path once a connection authenticates:
+	// "publickey", "password" or "keyboard-interactive". Empty until then.
+	// Non-sensitive: carried into the audit, never the credential itself.
+	AuthMethodUsed string
 }
 
 // ID returns the session's opaque store id, i.e. the key under which it is
@@ -116,10 +145,18 @@ func (s *Session) KeyBytes() []byte { return s.privateKey }
 // PassphraseBytes returns the passphrase bytes, if any.
 func (s *Session) PassphraseBytes() []byte { return s.passphrase }
 
+// PasswordBytes returns the password bytes (AuthKindPassword sessions only).
+func (s *Session) PasswordBytes() []byte { return s.password }
+
 // HasKey reports whether the session already carries inline key material. A
 // reference-path session (redeemed from the shared store) has no key until the
 // redeeming pod fetches it from the vault via SetKeyMaterial.
 func (s *Session) HasKey() bool { return len(s.privateKey) > 0 }
+
+// HasPassword reports whether the session already carries an inline
+// password. A reference-path password session has none until the redeeming
+// pod fetches it from the vault via SetPasswordMaterial.
+func (s *Session) HasPassword() bool { return len(s.password) > 0 }
 
 // SetKeyMaterial installs key material fetched at redeem time (reference path).
 // The bytes are held only on this Session, so Zeroize still wipes them on
@@ -129,6 +166,13 @@ func (s *Session) SetKeyMaterial(privateKey, passphrase []byte) {
 	s.passphrase = passphrase
 }
 
+// SetPasswordMaterial installs the password fetched at redeem time (reference
+// path). The bytes are held only on this Session, so Zeroize still wipes
+// them on teardown; callers must not retain the passed slice.
+func (s *Session) SetPasswordMaterial(password []byte) {
+	s.password = password
+}
+
 // Zeroize wipes the key material in place.
 func (s *Session) Zeroize() {
 	for i := range s.privateKey {
@@ -136,6 +180,9 @@ func (s *Session) Zeroize() {
 	}
 	for i := range s.passphrase {
 		s.passphrase[i] = 0
+	}
+	for i := range s.password {
+		s.password[i] = 0
 	}
 }
 
@@ -190,9 +237,11 @@ func (s *Store) Create(p Params) (id, ticket string, expiresIn int, err error) {
 		Host:        p.Host,
 		Port:        p.Port,
 		Username:    p.Username,
+		AuthKind:    p.AuthKind,
 		id:          id,
 		privateKey:  []byte(p.PrivateKey),
 		passphrase:  []byte(p.Passphrase),
+		password:    []byte(p.Password),
 		Started:     time.Now(),
 		ActorUserID: p.ActorUserID,
 		SecretID:    p.SecretID,

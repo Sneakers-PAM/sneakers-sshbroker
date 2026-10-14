@@ -97,6 +97,13 @@ message CreateSessionRequest {
   // refuses ("host key mismatch"). They travel on the ticket, including the
   // shared-store copy (public keys, not secrets).
   repeated string host_keys = 11;
+  // password_auth marks a secret whose credential is a username + password
+  // (vault fields "username"/"password") rather than a private key. On the
+  // reference path the broker reveals "password" instead of
+  // "privateKey"/"passphrase", and offers the target SSH password auth and
+  // keyboard-interactive (answering a single prompt with the password)
+  // instead of publickey. Ignored on the inline path, which stays key-only.
+  bool password_auth = 12;
 }
 
 message CreateSessionResponse {

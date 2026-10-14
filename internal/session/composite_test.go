@@ -56,6 +56,49 @@ func TestCompositeReferenceGoesToShared(t *testing.T) {
 	}
 }
 
+// TestCompositeInlinePasswordStaysLocal proves an inline-password session
+// NEVER goes to the shared store, the same as an inline key.
+func TestCompositeInlinePasswordStaysLocal(t *testing.T) {
+	mr, newPod := newMiniRedis(t)
+	local := NewStore()
+	defer local.Close()
+	c := NewComposite(local, newPod())
+	defer c.Close()
+
+	_, ticket, _, _ := c.Create(Params{
+		Host: "h", Port: 22, Username: "u",
+		AuthKind: AuthKindPassword, Password: "hunter2", TTL: 30 * time.Second,
+	})
+
+	if keys := mr.Keys(); len(keys) != 0 {
+		t.Fatalf("inline password ticket must not touch Redis; keys=%v", keys)
+	}
+	sess, ok := c.Consume(ticket)
+	if !ok || !sess.HasPassword() || sess.AuthKind != AuthKindPassword {
+		t.Fatalf("inline password redeem via composite failed: ok=%v sess=%+v", ok, sess)
+	}
+}
+
+// TestCompositeReferencePasswordGoesToShared proves a reference password
+// session (no inline password) is routed to the shared store, carrying its
+// AuthKind so the redeeming pod knows to fetch a password, not a key.
+func TestCompositeReferencePasswordGoesToShared(t *testing.T) {
+	_, newPod := newMiniRedis(t)
+	local := NewStore()
+	defer local.Close()
+	c := NewComposite(local, newPod())
+	defer c.Close()
+
+	p := refParams()
+	p.AuthKind = AuthKindPassword
+	_, ticket, _, _ := c.Create(p)
+
+	sess, ok := c.Consume(ticket)
+	if !ok || sess.AuthKind != AuthKindPassword || sess.HasPassword() {
+		t.Fatalf("reference password redeem via composite failed: ok=%v sess=%+v", ok, sess)
+	}
+}
+
 // TestCompositeInlineKeyStaysLocal proves an inline-key session NEVER goes to
 // the shared store, even when one is available (a private key must never enter
 // Redis). It is redeemable via the composite from the local store.

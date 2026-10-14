@@ -6,6 +6,7 @@ package grpcsvc
 import (
 	"context"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -87,6 +88,72 @@ func TestCreateSessionReferencePath(t *testing.T) {
 	if sess.SecretID != "secret-1" || sess.Actor.UserID != "actor-1" ||
 		!sess.Actor.IsSiteAdmin || len(sess.Actor.GroupNames) != 1 {
 		t.Fatalf("actor/secret not carried into session: %+v", sess.Actor)
+	}
+}
+
+// TestCreateSessionPasswordAuthReference covers #319: a password secret's
+// CreateSession request carries password_auth=true and no private_key, and
+// the session it mints carries AuthKindPassword through to the open path.
+func TestCreateSessionPasswordAuthReference(t *testing.T) {
+	store := session.NewStore()
+	rec := &recordingAudit{}
+	b := NewBroker(store, audit.New(rec), "ws://localhost:9097/ssh/session")
+
+	resp, err := b.CreateSession(context.Background(), &sshbrokerv1.CreateSessionRequest{
+		Host:         "192.0.2.1",
+		Port:         22,
+		Username:     "root",
+		PasswordAuth: true,
+		ActorUserId:  "actor-1",
+		SecretId:     "secret-1",
+		TargetId:     "target-1",
+		HostKeys:     []string{pinnedHostKey},
+		Actor:        &sshbrokerv1.ActorContext{UserId: "actor-1"},
+	})
+	if err != nil {
+		t.Fatalf("CreateSession error: %v", err)
+	}
+	sess, ok := store.Consume(resp.GetTicket())
+	if !ok {
+		t.Fatal("password reference ticket not consumable")
+	}
+	if sess.AuthKind != session.AuthKindPassword {
+		t.Fatalf("AuthKind = %v, want AuthKindPassword", sess.AuthKind)
+	}
+	if sess.HasKey() || sess.HasPassword() {
+		t.Fatal("reference session must not carry credential material yet")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		rec.mu.Lock()
+		for _, e := range rec.events {
+			if e.GetAction() == "session.start" {
+				if got := e.GetAttributes()["auth_kind"]; got != "password" {
+					t.Fatalf("session.start auth_kind = %q, want password", got)
+				}
+				rec.mu.Unlock()
+				return
+			}
+		}
+		rec.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("no session.start audit event")
+}
+
+// password_auth and private_key are mutually exclusive: a password secret is
+// always revealed by reference, never passed inline.
+func TestCreateSessionPasswordAuthRejectsInlineKey(t *testing.T) {
+	store := session.NewStore()
+	b := NewBroker(store, nilAudit(), "ws://localhost:9097/ssh/session")
+
+	_, err := b.CreateSession(context.Background(), &sshbrokerv1.CreateSessionRequest{
+		Host: "192.0.2.1", Username: "root", PrivateKey: "PEM", PasswordAuth: true,
+		ActorUserId: "actor-1",
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
 	}
 }
 

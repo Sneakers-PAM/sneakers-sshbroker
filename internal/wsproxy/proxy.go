@@ -143,14 +143,16 @@ type resizeMsg struct {
 	Rows int    `json:"rows"`
 }
 
-// KeyFetcher reveals key material for a reference-path session at redeem time.
-// A reference ticket (redeemed from the shared store) carries no key; the
-// redeeming pod calls FetchKey to get the private key (+ passphrase, nil when
-// absent) from the vault, using the session's actor. Implemented by
-// internal/vault; may be nil (inline-only deployments/tests), in which case a
-// reference ticket that needs a fetch is rejected.
+// KeyFetcher reveals credential material for a reference-path session at
+// redeem time. A reference ticket (redeemed from the shared store) carries no
+// credential; the redeeming pod calls FetchKey (sess.AuthKind ==
+// AuthKindPublicKey) or FetchPassword (AuthKindPassword) to get it from the
+// vault, using the session's actor. Implemented by internal/vault; may be nil
+// (inline-only deployments/tests), in which case a reference ticket that
+// needs a fetch is rejected.
 type KeyFetcher interface {
 	FetchKey(ctx context.Context, sess *session.Session) (privateKey, passphrase []byte, err error)
+	FetchPassword(ctx context.Context, sess *session.Session) (password []byte, err error)
 }
 
 // Handler is HandlerWithConfig using the package default liveness/lifetime
@@ -505,5 +507,5 @@ func endAudit(aud *audit.Emitter, sess *session.Session, reason string) {
 		return
 	}
 	dur := time.Since(sess.Started)
-	aud.End(context.Background(), sess.ActorUserID, sess.SecretID, sess.TargetID, dur, reason)
+	aud.End(context.Background(), sess.ActorUserID, sess.SecretID, sess.TargetID, dur, reason, sess.AuthMethodUsed)
 }

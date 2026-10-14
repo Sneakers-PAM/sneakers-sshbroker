@@ -30,6 +30,7 @@ type refTicket struct {
 	Host        string    `json:"host"`
 	Port        int32     `json:"port"`
 	Username    string    `json:"user"`
+	AuthKind    AuthKind  `json:"authKind,omitempty"`
 	ActorUserID string    `json:"actorUserId"`
 	SecretID    string    `json:"secretId"`
 	TargetID    string    `json:"targetId"`
@@ -73,6 +74,7 @@ func (r *RedisStore) Create(p Params) (id, ticket string, expiresIn int, err err
 		Host:        p.Host,
 		Port:        p.Port,
 		Username:    p.Username,
+		AuthKind:    p.AuthKind,
 		ActorUserID: p.ActorUserID,
 		SecretID:    p.SecretID,
 		TargetID:    p.TargetID,
@@ -123,6 +125,7 @@ func (r *RedisStore) Consume(ticket string) (*Session, bool) {
 		Host:        ref.Host,
 		Port:        ref.Port,
 		Username:    ref.Username,
+		AuthKind:    ref.AuthKind,
 		id:          ref.ID,
 		Started:     ref.Started,
 		ActorUserID: ref.ActorUserID,
