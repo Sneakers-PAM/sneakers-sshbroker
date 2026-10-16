@@ -98,6 +98,18 @@ issued, and a `session.refuse` audit event is sent with the reason `host key not
 gateway passes the reason to the web app, which shows it without opening a WebSocket. The dial
 still checks the pins, so a ticket that somehow has none is refused there too.
 
+`secret_target_ids` carries the secret's full attached-target list (vault `Secret.target_ids`,
+from v0.1.0-rc.3: one SSH Key secret may be attached to several targets). On the reference path,
+when it's set, `target_id` must be one of them or `CreateSession` returns `FailedPrecondition`
+with the message `target not attached to this secret: attach it on the secret first; no
+connection was made` and a `google.rpc.ErrorInfo` (domain `sneakers.sshbroker`, reason
+`TARGET_NOT_ATTACHED`, metadata `target_id`) — the same shape as the host-key refusal, and checked
+first: a target that is both unattached and unpinned is refused as unattached. No ticket is
+issued, and a `session.refuse` audit event is sent with the reason `target not attached to
+secret`. The check is independent of whatever the gateway resolved: the broker never trusts
+`target_id` alone, the same way it never trusts `host_keys` alone. The inline path, and a request
+with no `target_id` at all, have nothing to check.
+
 Only a person in the web app starts a brokered session. `actor.principal_kind` (the same values
 as the vault's `PrincipalKind`) is `PRINCIPAL_KIND_HUMAN` when unset; any other kind
 (`PRINCIPAL_KIND_USER_TOKEN` for an MCP or agent token, `PRINCIPAL_KIND_SERVICE_ACCOUNT` or

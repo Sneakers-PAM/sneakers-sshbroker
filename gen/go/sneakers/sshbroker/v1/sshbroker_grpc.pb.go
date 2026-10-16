@@ -48,7 +48,12 @@ const (
 //     must be redeemed on that same pod (single-replica). Retained so an older
 //     gateway keeps working during a rollout; prefer the reference form.
 type SSHBrokerServiceClient interface {
-	// CreateSession issues the ticket. A target with no pinned host key
+	// CreateSession issues the ticket. On the reference path (#168: one
+	// secret may open sessions on several pinned targets), target_id must
+	// also be one of secret_target_ids or the request is refused with
+	// FAILED_PRECONDITION (domain sneakers.sshbroker, reason
+	// TARGET_NOT_ATTACHED, metadata target_id) before any auth is sent, the
+	// same as an unpinned target. A target with no pinned host key
 	// (host_keys empty) is refused with FAILED_PRECONDITION and a
 	// google.rpc.ErrorInfo (domain sneakers.sshbroker, reason
 	// HOST_KEY_NOT_PINNED, metadata target_id), and no ticket is issued.
@@ -111,7 +116,12 @@ func (c *sSHBrokerServiceClient) ScanHostKey(ctx context.Context, in *ScanHostKe
 //     must be redeemed on that same pod (single-replica). Retained so an older
 //     gateway keeps working during a rollout; prefer the reference form.
 type SSHBrokerServiceServer interface {
-	// CreateSession issues the ticket. A target with no pinned host key
+	// CreateSession issues the ticket. On the reference path (#168: one
+	// secret may open sessions on several pinned targets), target_id must
+	// also be one of secret_target_ids or the request is refused with
+	// FAILED_PRECONDITION (domain sneakers.sshbroker, reason
+	// TARGET_NOT_ATTACHED, metadata target_id) before any auth is sent, the
+	// same as an unpinned target. A target with no pinned host key
 	// (host_keys empty) is refused with FAILED_PRECONDITION and a
 	// google.rpc.ErrorInfo (domain sneakers.sshbroker, reason
 	// HOST_KEY_NOT_PINNED, metadata target_id), and no ticket is issued.
