@@ -120,8 +120,9 @@ func startAuthedBroker(t *testing.T, iss *issuer, allowed []string, rec *recordi
 func referenceReq() *sshbrokerv1.CreateSessionRequest {
 	return &sshbrokerv1.CreateSessionRequest{
 		Host: "192.0.2.1", Port: 22, Username: "root", ActorUserId: "user-1", SecretId: "secret-1", TargetId: "target-1",
-		HostKeys: []string{pinnedHostKey},
-		Actor:    &sshbrokerv1.ActorContext{UserId: "user-1", IsRoot: true},
+		SecretTargetIds: []string{"target-1"},
+		HostKeys:        []string{pinnedHostKey},
+		Actor:           &sshbrokerv1.ActorContext{UserId: "user-1", IsRoot: true},
 	}
 }
 

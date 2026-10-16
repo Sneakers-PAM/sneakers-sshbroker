@@ -5,6 +5,7 @@ package grpcsvc
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	log "github.com/Bugs5382/go-log"
@@ -31,6 +32,14 @@ const ErrorDomain = "sneakers.sshbroker"
 const (
 	ReasonHostKeyNotPinned  = "HOST_KEY_NOT_PINNED"
 	HostKeyNotPinnedMessage = "host key not pinned for this target: an admin pins it on the target first; no connection was made"
+)
+
+// ReasonTargetNotAttached is the refusal reason for a target that isn't one
+// of the secret's attached targets (#168), and TargetNotAttachedMessage its
+// one-line message.
+const (
+	ReasonTargetNotAttached  = "TARGET_NOT_ATTACHED"
+	TargetNotAttachedMessage = "target not attached to this secret: attach it on the secret first; no connection was made"
 )
 
 // Broker implements sshbrokerv1.SSHBrokerServiceServer. It issues single-use
@@ -79,6 +88,16 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 	port, err := validateCreate(req)
 	if err != nil {
 		return nil, err
+	}
+	// On the reference path, a chosen target must be one the secret is
+	// actually attached to (#168) — checked here, independently of
+	// whatever the gateway resolved, before any auth is sent. The inline
+	// path (private_key set) has no secret to check attachment against,
+	// and a request with no target_id at all (a secret that isn't
+	// target-pinned) has nothing to check either.
+	isReference := req.GetPrivateKey() == ""
+	if isReference && req.GetSecretId() != "" && req.GetTargetId() != "" && !slices.Contains(req.GetSecretTargetIds(), req.GetTargetId()) {
+		return nil, b.refuseUnattached(ctx, req)
 	}
 	// The dial refuses an unpinned host too, but only once the browser's
 	// WebSocket arrives; refusing here gives the reason with no ticket and
@@ -144,6 +163,21 @@ func (b *Broker) CreateSession(ctx context.Context, req *sshbrokerv1.CreateSessi
 		WsUrl:            b.wsBase,
 		ExpiresInSeconds: safeconv.Int32(expiresIn),
 	}, nil
+}
+
+// refuseUnattached audits and logs a CreateSession for a target that isn't
+// one of the secret's attached targets (#168) and returns its
+// FailedPrecondition, with the reason and target id in an ErrorInfo.
+func (b *Broker) refuseUnattached(ctx context.Context, req *sshbrokerv1.CreateSessionRequest) error {
+	logger.Info().Str("actor_user_id", req.GetActorUserId()).Str("target_id", req.GetTargetId()).
+		Str("secret_id", req.GetSecretId()).Msg("session refused: target not attached to secret")
+	b.audit.Refused(ctx, req.GetActorUserId(), req.GetSecretId(), req.GetTargetId(), "target not attached to secret", nil)
+	st, _ := status.New(codes.FailedPrecondition, TargetNotAttachedMessage).WithDetails(&errdetails.ErrorInfo{
+		Domain:   ErrorDomain,
+		Reason:   ReasonTargetNotAttached,
+		Metadata: map[string]string{"target_id": req.GetTargetId()},
+	})
+	return st.Err()
 }
 
 // refuseUnpinned audits and logs a CreateSession for a target with no pinned

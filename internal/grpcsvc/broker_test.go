@@ -62,13 +62,14 @@ func TestCreateSessionReferencePath(t *testing.T) {
 
 	// No private_key: a reference session carrying secret_id + actor.
 	resp, err := b.CreateSession(context.Background(), &sshbrokerv1.CreateSessionRequest{
-		Host:        "192.0.2.1",
-		Port:        22,
-		Username:    "root",
-		ActorUserId: "actor-1",
-		SecretId:    "secret-1",
-		TargetId:    "target-1",
-		HostKeys:    []string{pinnedHostKey},
+		Host:            "192.0.2.1",
+		Port:            22,
+		Username:        "root",
+		ActorUserId:     "actor-1",
+		SecretId:        "secret-1",
+		TargetId:        "target-1",
+		SecretTargetIds: []string{"target-1"},
+		HostKeys:        []string{pinnedHostKey},
 		Actor: &sshbrokerv1.ActorContext{
 			UserId:      "actor-1",
 			IsSiteAdmin: true,
@@ -100,15 +101,16 @@ func TestCreateSessionPasswordAuthReference(t *testing.T) {
 	b := NewBroker(store, audit.New(rec), "ws://localhost:9097/ssh/session")
 
 	resp, err := b.CreateSession(context.Background(), &sshbrokerv1.CreateSessionRequest{
-		Host:         "192.0.2.1",
-		Port:         22,
-		Username:     "root",
-		PasswordAuth: true,
-		ActorUserId:  "actor-1",
-		SecretId:     "secret-1",
-		TargetId:     "target-1",
-		HostKeys:     []string{pinnedHostKey},
-		Actor:        &sshbrokerv1.ActorContext{UserId: "actor-1"},
+		Host:            "192.0.2.1",
+		Port:            22,
+		Username:        "root",
+		PasswordAuth:    true,
+		ActorUserId:     "actor-1",
+		SecretId:        "secret-1",
+		TargetId:        "target-1",
+		SecretTargetIds: []string{"target-1"},
+		HostKeys:        []string{pinnedHostKey},
+		Actor:           &sshbrokerv1.ActorContext{UserId: "actor-1"},
 	})
 	if err != nil {
 		t.Fatalf("CreateSession error: %v", err)

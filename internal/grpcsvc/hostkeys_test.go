@@ -39,7 +39,8 @@ func TestCreateSessionCarriesHostKeys(t *testing.T) {
 
 	resp, err := b.CreateSession(context.Background(), &sshbrokerv1.CreateSessionRequest{
 		Host: "192.0.2.1", Port: 22, Username: "root", ActorUserId: "actor-1",
-		SecretId: "secret-1", TargetId: "target-1", Actor: &sshbrokerv1.ActorContext{UserId: "actor-1"},
+		SecretId: "secret-1", TargetId: "target-1", SecretTargetIds: []string{"target-1"},
+		Actor:    &sshbrokerv1.ActorContext{UserId: "actor-1"},
 		HostKeys: keys,
 	})
 	if err != nil {
