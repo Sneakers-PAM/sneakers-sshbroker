@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	stdlog "log"
 	"os"
 	"strings"
 	"testing"
@@ -106,6 +107,7 @@ func TestLogFiltersKeepUnallowedAndTargetTextFromTheCollector(t *testing.T) {
 		Str("host", canary).
 		Str("error", "target said "+canary).
 		Str("reason", canary).
+		Str("outcome", "dial 192.0.2.1: "+canary).
 		Str("step", "handshake").
 		Str("target_id", "t-1").
 		Str("actor_user_id", "snk_"+canary).
@@ -137,11 +139,16 @@ func TestLoggerBuiltBeforeInitIsSafe(t *testing.T) {
 func TestExportErrorsLeaveOutTheirText(t *testing.T) {
 	const secret = "collector.example.org:4317 authorization=abc"
 	var buf bytes.Buffer
-	telemetry.HandleExportErrors("https://collector.example.org:4317", log.NewLoggerWithOptions("t", log.WithOutput(&buf)))
-	sdkotel.Handle(errors.New(secret))
-	if !strings.Contains(buf.String(), "otlp export failed") {
-		t.Fatalf("no line: %q", buf.String())
+	stdlog.SetOutput(&buf)
+	t.Cleanup(func() { stdlog.SetOutput(os.Stderr) })
+
+	c := collectortest.Start(t, false)
+	shutdown, err := otel.InitWithOptions(context.Background(), "t", c.Endpoint, telemetry.Options(noEnv)...)
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = shutdown(context.Background()) })
+	sdkotel.Handle(errors.New(secret))
 	if strings.Contains(buf.String(), "authorization") || strings.Contains(buf.String(), "collector.example.org") {
 		t.Fatalf("error text logged: %q", buf.String())
 	}

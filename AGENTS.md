@@ -24,7 +24,7 @@ every session is bounded by liveness checks and a maximum length. Keep it that w
   pumps and the liveness checks, with tests against an in-process SSH server.
 - `internal/vault/` - reveals the key and passphrase from the vault for a reference ticket.
 - `internal/audit/` - the best-effort `session.start` and `session.end` events.
-- `internal/telemetry/` - the OTLP switches, the log export allow-list, the logger output and the
+- `internal/telemetry/` - the OTLP switches, the log, trace and metric allow-lists, the logger output and the
   optional `otlp` health dependency. Build loggers with `telemetry.New` so they reach the exporter, and
   add a new log field to the list only if it holds an id, count, duration, class, state or short enum.
 - `internal/safeconv/` - the bounds-checked int to int32 conversion.

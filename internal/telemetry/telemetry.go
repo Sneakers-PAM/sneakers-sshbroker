@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package telemetry holds the broker's OTLP settings: the environment
-// switches, the log export filters, the logger output, the handler for
-// export errors and the optional otlp health dependency.
+// switches, the export filters, the logger output and the optional otlp health
+// dependency.
 package telemetry
 
 import (
@@ -17,8 +17,6 @@ import (
 	log "github.com/Bugs5382/go-log"
 	otel "github.com/Bugs5382/go-otel"
 	"github.com/rs/zerolog"
-	sdkotel "go.opentelemetry.io/otel"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -34,27 +32,35 @@ const (
 // allowedLogFields are the only fields, beyond time, level, service and
 // message, a log record may carry to a collector. A new log field exports
 // nothing until it is added here. Keep this list to ids, counts, durations,
-// classes, states and short enums.
+// classes, states and short enums. "outcome" stays off: go-workload-identity
+// fills it with error text.
 var allowedLogFields = []string{
 	"trace_id", "span_id",
 	"actor_user_id", "target_id", "secret_id",
 	"attempt", "attempts", "keys", "kept_keys", "pinned_keys",
 	"took", "retry_in", "elapsed", "duration", "step_ms", "elapsed_ms", "duration_ms",
-	"step", "outcome", "error_class", "code", "action", "principal_kind", "reference",
+	"step", "error_class", "code", "action", "principal_kind", "reference",
 	"dependency", "required", "from", "to", "method", "caller",
 	"error", "reason",
 }
 
 // classOnlyLogFields can hold a target system's own text, which can echo a
-// credential, so they export as "[string]" and never as text. "step",
-// "outcome" and "error_class" carry the stable class instead.
+// credential, so they export as "[string]" and never as text. "step" and
+// "error_class" carry the stable class instead.
 var classOnlyLogFields = []string{"error", "reason"}
 
 // tokenPattern matches a Sneakers API token wherever it appears.
 var tokenPattern = regexp.MustCompile(`\bsnk_[A-Za-z0-9_\-]+`)
 
-// Options are the go-otel options the environment selects. The log filters
-// are always set, so turning logs on can never run without them.
+// rpcMethodPattern is the only shape of gRPC method that names a span or fills
+// rpc.method. A method name is the caller's text, and the health service's
+// spans leave unnamed.
+var rpcMethodPattern = regexp.MustCompile(`^sneakers\.[a-z]+\.v1\.[A-Za-z]+/[A-Za-z]+$`)
+
+// Options are the go-otel options the environment selects. The filters are
+// always set, so export can never run without them. The HTTP mux has no metrics
+// middleware, so the gRPC labels are all the service emits, and nothing is
+// allowed on the resource beyond service.name.
 func Options(getenv func(string) string) []otel.Option {
 	return []otel.Option{
 		otel.WithInsecureSkipVerify(getenv(EnvInsecureSkipVerify) == "true"),
@@ -62,6 +68,12 @@ func Options(getenv func(string) string) []otel.Option {
 		otel.WithLogAllowFields(allowedLogFields...),
 		otel.WithLogClassOnlyFields(classOnlyLogFields...),
 		otel.WithLogRedactPatterns(tokenPattern),
+		otel.WithTelemetryFilter(true),
+		otel.WithTraceAllowSpanNames(rpcMethodPattern),
+		otel.WithTraceAllowAttributes("rpc.method", "rpc.response.status_code"),
+		otel.WithMetricAllowAttributes("rpc.method", "rpc.response.status_code"),
+		otel.WithAttributeValuePattern("rpc.method", rpcMethodPattern),
+		otel.WithBaggage(false),
 	}
 }
 
@@ -85,18 +97,6 @@ func NewLogger(service string) log.Logger {
 func New(service string) zerolog.Logger {
 	NewLogger(service)
 	return log.Ctx(context.Background()) //nolint:staticcheck // the logger built on the line above
-}
-
-// HandleExportErrors sends the OTLP SDK's errors to lg in place of the default
-// raw lines on stderr. Only the gRPC code is logged: the error text can name
-// the endpoint and its headers. With no endpoint nothing changes.
-func HandleExportErrors(endpoint string, lg log.Logger) {
-	if endpoint == "" {
-		return
-	}
-	sdkotel.SetErrorHandler(sdkotel.ErrorHandlerFunc(func(err error) {
-		lg.Warn("otlp export failed", log.F("error_class", status.Code(err).String()))
-	}))
 }
 
 // errExportFailing is the otlp dependency's error. It carries no export error

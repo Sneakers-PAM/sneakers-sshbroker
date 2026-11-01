@@ -191,7 +191,6 @@ func main() {
 	httpPort := env("HTTP_PORT", "9097")
 
 	endpoint := otlpEndpoint(os.Getenv)
-	telemetry.HandleExportErrors(endpoint, telemetry.NewLogger(serviceName))
 	otelShutdown, err := otel.InitWithOptions(ctx, serviceName, endpoint, telemetry.Options(os.Getenv)...)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("otel init")

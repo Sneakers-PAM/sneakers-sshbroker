@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	collogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	colmetrics "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,7 +20,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-// Collector records the log export requests it receives, as JSON text.
+// Collector records the export requests it receives, as JSON text.
 type Collector struct {
 	collogs.UnimplementedLogsServiceServer
 	// Endpoint is the URL to export to.
@@ -27,6 +28,8 @@ type Collector struct {
 
 	mu         sync.Mutex
 	logs       []string
+	traces     []string
+	metrics    []string
 	failTraces bool
 }
 
@@ -42,6 +45,7 @@ func Start(t *testing.T, failTraces bool) *Collector {
 	gs := grpc.NewServer()
 	collogs.RegisterLogsServiceServer(gs, c)
 	coltrace.RegisterTraceServiceServer(gs, traceServer{c: c})
+	colmetrics.RegisterMetricsServiceServer(gs, metricsServer{c: c})
 	go func() { _ = gs.Serve(lis) }()
 	t.Cleanup(gs.Stop)
 	return c
@@ -66,15 +70,53 @@ func (c *Collector) Logs() string {
 	return strings.Join(c.logs, "\n")
 }
 
+// Traces is every trace export accepted so far.
+func (c *Collector) Traces() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.Join(c.traces, "\n")
+}
+
+// Metrics is every metric export received so far.
+func (c *Collector) Metrics() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.Join(c.metrics, "\n")
+}
+
 type traceServer struct {
 	coltrace.UnimplementedTraceServiceServer
 	c *Collector
 }
 
 // Export takes traces, or refuses them.
-func (s traceServer) Export(context.Context, *coltrace.ExportTraceServiceRequest) (*coltrace.ExportTraceServiceResponse, error) {
+func (s traceServer) Export(_ context.Context, req *coltrace.ExportTraceServiceRequest) (*coltrace.ExportTraceServiceResponse, error) {
 	if s.c.failTraces {
 		return nil, status.Error(codes.PermissionDenied, "refused")
 	}
+	b, err := protojson.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	s.c.mu.Lock()
+	defer s.c.mu.Unlock()
+	s.c.traces = append(s.c.traces, string(b))
 	return &coltrace.ExportTraceServiceResponse{}, nil
+}
+
+type metricsServer struct {
+	colmetrics.UnimplementedMetricsServiceServer
+	c *Collector
+}
+
+// Export takes metrics.
+func (s metricsServer) Export(_ context.Context, req *colmetrics.ExportMetricsServiceRequest) (*colmetrics.ExportMetricsServiceResponse, error) {
+	b, err := protojson.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	s.c.mu.Lock()
+	defer s.c.mu.Unlock()
+	s.c.metrics = append(s.c.metrics, string(b))
+	return &colmetrics.ExportMetricsServiceResponse{}, nil
 }

@@ -24,13 +24,19 @@ log JSON, at `debug` in a dev cluster, `info` in QA or staging and `error` in pr
 
 With `OTEL_EXPORTER_OTLP_ENDPOINT` set, readiness lists an optional `otlp` dependency. It's down when
 the last export failed on traces or metrics, or on logs when logs are on. It's optional, so the
-broker shows as degraded and stays ready. Export errors are logged with their gRPC code only, never
-their text.
+broker shows as degraded and stays ready. Export errors print their gRPC code only, never their
+text, through go-otel's redacted handler.
+
+Traces and metrics are default-deny too, through go-otel's telemetry filter. A span keeps its ids,
+times, kind and status code; status text and exception events never leave. Only `sneakers.*.v1`
+gRPC methods name a span, and any other span leaves as `[span]`. Spans and metrics carry
+`rpc.method` and `rpc.response.status_code` only, the resource carries `service.name` only, and
+baggage is neither taken nor forwarded.
 
 Log export is default-deny and needs JSON lines, so `LOG_FORMAT=console` exports nothing. The list
 in `internal/telemetry/telemetry.go` names the only fields that leave. Records are info and above,
 and `snk_` tokens are removed. A target system's text can echo a credential, so `error` and `reason`
-export as `[string]`, never their text; read `step`, `outcome` and `error_class` instead. Hosts,
+export as `[string]`, never their text; read `step` and `error_class` instead. `outcome` stays off the list because a library fills it with error text. Hosts,
 addresses, origins, fingerprints and panic stacks stay off the list, and session content is never
 logged anywhere. A new log field exports nothing until it's added to the list.
 

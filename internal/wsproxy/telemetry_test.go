@@ -88,7 +88,7 @@ func logsCollector(t *testing.T) (*collectortest.Collector, func() string) {
 }
 
 func TestTargetErrorTextNeverReachesTheCollector(t *testing.T) {
-	_, flush := logsCollector(t)
+	c, flush := logsCollector(t)
 	lines := captureLog(t)
 	pemPriv, _ := genClientKey(t)
 	host, port := startRudeTarget(t)
@@ -119,13 +119,15 @@ func TestTargetErrorTextNeverReachesTheCollector(t *testing.T) {
 	if !strings.Contains(got, "handshake") {
 		t.Fatalf("stable step wasn't exported: %s", got)
 	}
-	if strings.Contains(got, canary) {
-		t.Fatalf("target text reached the collector: %s", got)
+	for name, got := range map[string]string{"logs": got, "traces": c.Traces(), "metrics": c.Metrics()} {
+		if strings.Contains(got, canary) {
+			t.Fatalf("target text reached the collector in %s: %s", name, got)
+		}
 	}
 }
 
-func TestSessionContentNeverReachesALog(t *testing.T) {
-	_, flush := logsCollector(t)
+func TestSessionContentNeverReachesASignal(t *testing.T) {
+	c, flush := logsCollector(t)
 	from := testLog.len()
 	pemPriv, authorizedPub := genClientKey(t)
 	signer := newHostSigner(t)
@@ -163,7 +165,9 @@ func TestSessionContentNeverReachesALog(t *testing.T) {
 			}
 		}
 	}
-	if got := flush(); strings.Contains(got, content) {
-		t.Fatalf("session content reached the collector: %s", got)
+	for name, got := range map[string]string{"logs": flush(), "traces": c.Traces(), "metrics": c.Metrics()} {
+		if strings.Contains(got, content) {
+			t.Fatalf("session content reached the collector in %s: %s", name, got)
+		}
 	}
 }
