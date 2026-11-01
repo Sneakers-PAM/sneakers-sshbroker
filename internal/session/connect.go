@@ -7,10 +7,10 @@ import (
 	"context"
 	"time"
 
-	log "github.com/Bugs5382/go-log"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/telemetry"
 )
 
-var connectLogger = log.New("sshbroker-session")
+var connectLogger = telemetry.New("sshbroker-session")
 
 // Backoff is the wait between attempts to reach the shared store: Min after
 // the first failure, doubling up to Max.

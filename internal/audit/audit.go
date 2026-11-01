@@ -13,13 +13,14 @@ import (
 	"strconv"
 	"time"
 
-	log "github.com/Bugs5382/go-log"
 	auditv1 "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/thirdparty/audit/v1"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/telemetry"
+	"google.golang.org/grpc/status"
 )
 
-// logger is package-scoped (type inferred from log.New) so callers never
+// logger is package-scoped (type inferred from telemetry.New) so callers never
 // need to import zerolog directly.
-var logger = log.New("sshbroker-audit")
+var logger = telemetry.New("sshbroker-audit")
 
 // emitTimeout bounds every audit call, so a slow or unreachable audit service
 // never holds a session open or its error back from the client. The caller's
@@ -124,6 +125,6 @@ func (e *Emitter) emit(ctx context.Context, req *auditv1.RecordEventRequest) {
 	defer cancel()
 	started := time.Now()
 	if _, err := e.client.RecordEvent(ctx, req); err != nil {
-		logger.Error().Err(err).Str("action", req.Action).Dur("elapsed", time.Since(started)).Msg("audit emit failed")
+		logger.Error().Err(err).Str("error_class", status.Code(err).String()).Str("action", req.Action).Dur("elapsed", time.Since(started)).Msg("audit emit failed")
 	}
 }

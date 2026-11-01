@@ -17,8 +17,8 @@ package vault
 import (
 	"context"
 
-	log "github.com/Bugs5382/go-log"
 	vaultv1 "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/thirdparty/vault/v1"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/telemetry"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -36,7 +36,7 @@ const (
 // logger is package-scoped so callers never import zerolog directly. Only
 // host/target_id/secret_id/actor_user_id/reason are ever logged -- never key
 // material.
-var logger = log.New("sshbroker-vault")
+var logger = telemetry.New("sshbroker-vault")
 
 // Client reveals SSH key material from the vault for a reference-path session.
 type Client struct {
@@ -62,6 +62,7 @@ func (v *Client) FetchKey(ctx context.Context, sess *session.Session) (privateKe
 	})
 	if err != nil {
 		logger.Error().Err(err).
+			Str("error_class", status.Code(err).String()).
 			Str("secret_id", sess.SecretID).
 			Str("actor_user_id", sess.ActorUserID).
 			Str("reason", "reveal privateKey failed").
@@ -79,6 +80,7 @@ func (v *Client) FetchKey(ctx context.Context, sess *session.Session) (privateKe
 		// SSH key with no passphrase: not an error.
 	case err != nil:
 		logger.Error().Err(err).
+			Str("error_class", status.Code(err).String()).
 			Str("secret_id", sess.SecretID).
 			Str("actor_user_id", sess.ActorUserID).
 			Str("reason", "reveal passphrase failed").
@@ -104,6 +106,7 @@ func (v *Client) FetchPassword(ctx context.Context, sess *session.Session) (pass
 	})
 	if err != nil {
 		logger.Error().Err(err).
+			Str("error_class", status.Code(err).String()).
 			Str("secret_id", sess.SecretID).
 			Str("actor_user_id", sess.ActorUserID).
 			Str("reason", "reveal password failed").
