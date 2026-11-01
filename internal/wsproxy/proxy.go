@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Bugs5382/go-log"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/telemetry"
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
 
@@ -28,12 +28,12 @@ import (
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 )
 
-// logger is package-scoped (type inferred from log.New), matching the
+// logger is package-scoped (type inferred from telemetry.New), matching the
 // internal/audit convention, so callers never need to import zerolog
 // directly. Log fields are limited to host/target_id/secret_id/
 // actor_user_id/reason -- key material, the private key, and the passphrase
 // must never be logged.
-var logger = log.New("sshbroker-wsproxy")
+var logger = telemetry.New("sshbroker-wsproxy")
 
 // Tunable liveness/lifetime defaults. Three independent mechanisms bound how
 // long a session (and thus its resident SSH private key material) can
@@ -496,6 +496,7 @@ func logFailure(sess *session.Session, reason string, err error) {
 		Str("target_id", sess.TargetID).
 		Str("secret_id", sess.SecretID).
 		Str("actor_user_id", sess.ActorUserID).
+		Str("step", "upgrade").
 		Str("reason", reason).
 		Msg("ssh session failed")
 }

@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/Bugs5382/go-log"
 	otel "github.com/Bugs5382/go-otel"
 	bredis "github.com/Bugs5382/go-redis"
 	auditv1 "github.com/Sneakers-PAM/sneakers-sshbroker/gen/go/thirdparty/audit/v1"
@@ -27,6 +26,7 @@ import (
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/grpcsvc"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/server"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/telemetry"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/vault"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/wsproxy"
 )
@@ -80,7 +80,7 @@ func redisOptionsFrom(opt *goredis.Options) ([]bredis.Option, error) {
 //
 // The *bredis.Client is never closed: the process holds it for its lifetime.
 func newTicketStore(ctx context.Context, local *session.Store, onReady func()) *session.Composite {
-	logger := log.New(serviceName)
+	logger := telemetry.New(serviceName)
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
@@ -121,7 +121,7 @@ func newTicketStore(ctx context.Context, local *session.Store, onReady func()) *
 // origin of the public WebSocket URL (the UI served from the same host). A
 // malformed value stops the start.
 func allowedOrigins(wsBase string) []string {
-	logger := log.New(serviceName)
+	logger := telemetry.New(serviceName)
 	if raw := os.Getenv("SSHBROKER_ALLOWED_ORIGINS"); raw != "" {
 		origins, err := wsproxy.ParseOrigins(raw)
 		if err != nil {
@@ -141,7 +141,7 @@ func allowedOrigins(wsBase string) []string {
 // WORKLOAD_TOKEN_FILE when it is set. A set path that can't be read stops the
 // start.
 func callerDialOptions() []grpc.DialOption {
-	logger := log.New(serviceName)
+	logger := telemetry.New(serviceName)
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), server.ClientStatsHandler()}
 	tok, ok, err := workloadauth.DialOptionFromEnv(os.Getenv)
 	if err != nil {
@@ -162,8 +162,8 @@ func callerDialOptions() []grpc.DialOption {
 // start fails unless WORKLOAD_AUTH=disabled, which trusts every caller and is
 // for local development only.
 func workloadAuth(ctx context.Context, aud *audit.Emitter) (*workloadauth.Verifier, []grpc.ServerOption) {
-	logger := log.New(serviceName)
-	lg := log.NewLogger(serviceName)
+	logger := telemetry.New(serviceName)
+	lg := telemetry.NewLogger(serviceName)
 	cfg, enabled, err := server.WorkloadConfigFromEnv(os.Getenv)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("workload authentication")
@@ -186,11 +186,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	logger := log.New(serviceName)
+	logger := telemetry.New(serviceName)
 	grpcPort := env("GRPC_PORT", "9096")
 	httpPort := env("HTTP_PORT", "9097")
 
-	otelShutdown, err := otel.Init(ctx, serviceName, otlpEndpoint(os.Getenv))
+	endpoint := otlpEndpoint(os.Getenv)
+	otelShutdown, err := otel.InitWithOptions(ctx, serviceName, endpoint, telemetry.Options(os.Getenv)...)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("otel init")
 	}
@@ -238,8 +239,10 @@ func main() {
 
 	// Readiness: the gRPC health check (service "") and /readyz follow these;
 	// service "liveness" and /livez check the process only.
-	checker, err := server.NewChecker(log.NewLogger(serviceName), readinessDeps(store, os.Getenv("REDIS_URL") != "",
-		healthpb.NewHealthClient(vaultConn), healthpb.NewHealthClient(auditConn), workloadVerifier))
+	deps := append(readinessDeps(store, os.Getenv("REDIS_URL") != "",
+		healthpb.NewHealthClient(vaultConn), healthpb.NewHealthClient(auditConn), workloadVerifier),
+		telemetry.Dependencies(endpoint, os.Getenv)...)
+	checker, err := server.NewChecker(telemetry.NewLogger(serviceName), deps)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("health checker")
 	}

@@ -12,11 +12,33 @@ The service reads its configuration from the environment. Every setting has a de
 | `VAULT_ADDR` | `localhost:9091` | `host:port` of the vault service's gRPC API, used to reveal the credential (key or password) for a reference ticket. The connection is plaintext and made lazily. |
 | `AUDIT_ADDR` | `localhost:9194` | `host:port` of the audit service's gRPC API, for the session start and end events. The connection is plaintext and made lazily. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (no export) | OTLP gRPC collector for traces and metrics, as a URL: `http://collector:4317` for plaintext, `https://collector:4317` for TLS. A bare `host:port` still connects as plaintext, but the OpenTelemetry SDK, which reads this variable too, logs `parse url` errors at start. Any other scheme stops the service at start. Unset or empty disables export cleanly; set it to opt in. |
+| `OTLP_INSECURE_SKIP_VERIFY` | unset | `true` (only that word) skips certificate validation on an `https` collector. The connection stays encrypted but the collector isn't authenticated, so no logs are sent while it's on; traces and metrics carry on. |
+| `OTLP_LOGS_ENABLED` | unset | `true` (only that word) also exports logs to the collector, through the filters below. Stdout doesn't change. |
 | `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `panic` or `disabled`. |
 | `LOG_FORMAT` | `json` | `json`, `console` (or `pretty`), or `both` (JSON on stdout, console on stderr). |
 
 Local development logs at `trace` in `console` format (see `.env.example`). Cluster environments
 log JSON, at `debug` in a dev cluster, `info` in QA or staging and `error` in production.
+
+## Telemetry export
+
+With `OTEL_EXPORTER_OTLP_ENDPOINT` set, readiness lists an optional `otlp` dependency. It's down when
+the last export failed on traces or metrics, or on logs when logs are on. It's optional, so the
+broker shows as degraded and stays ready. Export errors print their gRPC code only, never their
+text, through go-otel's redacted handler.
+
+Traces and metrics are default-deny too, through go-otel's telemetry filter. A span keeps its ids,
+times, kind and status code; status text and exception events never leave. Only `sneakers.*.v1`
+gRPC methods name a span, and any other span leaves as `[span]`. Spans and metrics carry
+`rpc.method` and `rpc.response.status_code` only, the resource carries `service.name` only, and
+baggage is neither taken nor forwarded.
+
+Log export is default-deny and needs JSON lines, so `LOG_FORMAT=console` exports nothing. The list
+in `internal/telemetry/telemetry.go` names the only fields that leave. Records are info and above,
+and `snk_` tokens are removed. A target system's text can echo a credential, so `error` and `reason`
+export as `[string]`, never their text; read `step` and `error_class` instead. `outcome` stays off the list because a library fills it with error text. Hosts,
+addresses, origins, fingerprints and panic stacks stay off the list, and session content is never
+logged anywhere. A new log field exports nothing until it's added to the list.
 
 ## Workload authentication
 

@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 
 	log "github.com/Bugs5382/go-log"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/telemetry"
 
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -19,7 +20,7 @@ import (
 
 // logger is the server's own logger. Logger.Ctx derives the trace-correlated
 // logger from it, so the service name is always this one.
-var logger = log.NewLogger("sshbroker")
+var logger = telemetry.NewLogger("sshbroker")
 
 // RecoveryUnaryInterceptor returns a grpc.UnaryServerInterceptor that recovers
 // from panics raised anywhere in the downstream chain (inner interceptors and

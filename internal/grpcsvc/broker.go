@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	log "github.com/Bugs5382/go-log"
+	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/telemetry"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -21,7 +21,7 @@ import (
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/session"
 )
 
-var logger = log.New("sshbroker-grpc")
+var logger = telemetry.New("sshbroker-grpc")
 
 // ErrorDomain is the google.rpc.ErrorInfo domain of the broker's coded
 // refusals; the gateway passes reasons in a sneakers.* domain to its clients.

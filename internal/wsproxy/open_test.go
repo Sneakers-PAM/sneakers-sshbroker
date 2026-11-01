@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	otel "github.com/Bugs5382/go-otel"
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
@@ -361,7 +362,7 @@ func (timeoutErr) Temporary() bool { return true }
 var testLog = &syncBuffer{}
 
 func TestMain(m *testing.M) {
-	logger = logger.Output(io.MultiWriter(testLog, os.Stderr))
+	logger = logger.Output(io.MultiWriter(testLog, os.Stderr, otel.LogWriter()))
 	os.Exit(m.Run())
 }
 
