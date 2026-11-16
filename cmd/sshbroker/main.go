@@ -121,6 +121,9 @@ func newTicketStore(ctx context.Context, local *session.Store, onReady func()) *
 // allowedOrigins reads SSHBROKER_ALLOWED_ORIGINS, or when it's unset, the
 // origin of the public WebSocket URL (the UI served from the same host). A
 // malformed value stops the start.
+// healthPort is the plaintext health-only gRPC port used with mutual TLS: HEALTH_PORT, default 9098.
+func healthPort() string { return env("HEALTH_PORT", "9098") }
+
 func allowedOrigins(wsBase string) []string {
 	logger := telemetry.New(serviceName)
 	if raw := os.Getenv("SSHBROKER_ALLOWED_ORIGINS"); raw != "" {
@@ -309,7 +312,7 @@ func main() {
 		// The kubelet's gRPC probe cannot present a client certificate, so
 		// the health services also answer in plaintext on their own port,
 		// which serves nothing else.
-		healthPort := env("MTLS_HEALTH_PORT", "9098")
+		healthPort := healthPort()
 		go func() {
 			logger.Info().Str("health", healthPort).Msg("plain health-only grpc listening")
 			if err := server.RunPlainHealth(ctx, healthPort, checker); err != nil {
