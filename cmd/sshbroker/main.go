@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	mtls "github.com/Bugs5382/go-mtls"
 	workloadauth "github.com/Bugs5382/go-workload-identity"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/audit"
 	"github.com/Sneakers-PAM/sneakers-sshbroker/internal/grpcsvc"
@@ -137,12 +138,16 @@ func allowedOrigins(wsBase string) []string {
 }
 
 // callerDialOptions are the options for the broker's own calls (vault and
-// audit): plaintext, traced, and carrying the broker's workload token from
+// audit): mutual TLS when prov is set, plaintext otherwise, traced, and carrying the broker's workload token from
 // WORKLOAD_TOKEN_FILE when it is set. A set path that can't be read stops the
 // start.
-func callerDialOptions() []grpc.DialOption {
+func callerDialOptions(prov *mtls.Provider) []grpc.DialOption {
 	logger := telemetry.New(serviceName)
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), server.ClientStatsHandler()}
+	creds := grpc.WithTransportCredentials(insecure.NewCredentials())
+	if prov != nil {
+		creds = prov.DialOption()
+	}
+	opts := []grpc.DialOption{creds, server.ClientStatsHandler()}
 	tok, ok, err := workloadauth.DialOptionFromEnv(os.Getenv)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("workload token")
@@ -212,7 +217,22 @@ func main() {
 	store := newTicketStore(ctx, local, onReady)
 	defer store.Close()
 
-	dialOpts := callerDialOptions()
+	// Mutual TLS for the gRPC port and the calls to the vault and audit,
+	// when MTLS_CERT_FILE, MTLS_KEY_FILE and MTLS_CA_FILE are set; plaintext
+	// when none is. The HTTP and WebSocket port is the edge's and is not
+	// covered. A half-set or unreadable configuration stops the start.
+	mtlsProv, err := server.MTLSFromEnv(func(err error) {
+		logger.Error().Err(err).Msg("mtls: reload failed; keeping the last good files")
+	})
+	if err != nil {
+		logger.Fatal().Err(err).Msg("mtls")
+	}
+	if mtlsProv != nil {
+		logger.Info().Msg("mutual TLS on for gRPC and for the calls to the vault and audit")
+	} else {
+		logger.Warn().Msg("MTLS_* files unset; gRPC and the calls to the vault and audit are plaintext")
+	}
+	dialOpts := callerDialOptions(mtlsProv)
 
 	auditAddr := env("AUDIT_ADDR", "localhost:9194")
 	auditConn, err := grpc.NewClient(auditAddr, dialOpts...)
@@ -284,7 +304,21 @@ func main() {
 
 	broker := grpcsvc.NewBroker(store, auditEmitter, wsBase)
 
-	logger.Info().Str("grpc", grpcPort).Msg("starting sshbroker")
+	if mtlsProv != nil {
+		authOpts = append(authOpts, mtlsProv.ServerOption())
+		// The kubelet's gRPC probe cannot present a client certificate, so
+		// the health services also answer in plaintext on their own port,
+		// which serves nothing else.
+		healthPort := env("MTLS_HEALTH_PORT", "9098")
+		go func() {
+			logger.Info().Str("health", healthPort).Msg("plain health-only grpc listening")
+			if err := server.RunPlainHealth(ctx, healthPort, checker); err != nil {
+				logger.Fatal().Err(err).Msg("plain health server")
+			}
+		}()
+	}
+
+	logger.Info().Str("grpc", grpcPort).Bool("mtls", mtlsProv != nil).Msg("starting sshbroker")
 	if err := server.RunWithHealth(ctx, grpcPort, checker, func(gs *grpc.Server) {
 		grpcsvc.RegisterServer(gs, broker)
 	}, authOpts...); err != nil {
