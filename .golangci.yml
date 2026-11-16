@@ -23,10 +23,3 @@ linters:
       # gate targets production code, not test bodies.
       - path: '_test\.go$'
         linters: [gocyclo, gocognit]
-      # The WebSocket handler keeps its whole session lifecycle (ticket,
-      # key reveal, dial, liveness goroutines, pumps and the zeroizing
-      # teardown) in one function so the teardown order reads in one place;
-      # splitting it is tracked in the backlog.
-      - path: 'internal/wsproxy/proxy\.go$'
-        linters: [gocyclo, gocognit]
-        text: 'HandlerWithConfig'

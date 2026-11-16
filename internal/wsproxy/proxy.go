@@ -184,202 +184,261 @@ func Handler(store session.TicketStore, aud *audit.Emitter, keys KeyFetcher) htt
 func HandlerWithConfig(store session.TicketStore, aud *audit.Emitter, keys KeyFetcher, cfg Config) http.HandlerFunc {
 	cfg = cfg.withDefaults()
 	origins := newOriginChecker(cfg.AllowedOrigins)
-	upgrader := &websocket.Upgrader{CheckOrigin: origins.allowed}
+	h := &handler{
+		store:    store,
+		aud:      aud,
+		keys:     keys,
+		cfg:      cfg,
+		origins:  origins,
+		upgrader: &websocket.Upgrader{CheckOrigin: origins.allowed},
+	}
+	return h.serve
+}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Checked before the ticket is consumed, so a page on another origin
-		// can't burn a ticket the real UI is about to use.
-		if !origins.allowed(r) {
-			logger.Warn().Str("origin", r.Header.Get("Origin")).Msg("ssh session rejected: origin not allowed")
-			http.Error(w, "origin not allowed", http.StatusForbidden)
-			return
-		}
-		ticket := r.URL.Query().Get("ticket")
-		sess, ok := store.Consume(ticket)
-		if !ok {
-			logger.Warn().Msg("ssh session rejected: invalid or expired ticket")
-			http.Error(w, "invalid or expired ticket", http.StatusForbidden)
-			return
-		}
+// handler holds what every session needs; serve runs one session.
+type handler struct {
+	store    session.TicketStore
+	aud      *audit.Emitter
+	keys     KeyFetcher
+	cfg      Config
+	origins  originChecker
+	upgrader *websocket.Upgrader
+}
 
-		logger.Info().
-			Str("host", sess.Host).
-			Int32("port", sess.Port).
-			Str("target_id", sess.TargetID).
-			Str("secret_id", sess.SecretID).
-			Str("actor_user_id", sess.ActorUserID).
-			Bool("reference", !sess.HasKey()).
-			Msg("ssh session opening")
+// serve runs one session: redeem the ticket, open the target, upgrade, relay.
+// The deferred calls run in reverse, so the WebSocket and the target close
+// first and the teardown (zeroize, remove from the store, audit) runs last,
+// on every exit path.
+func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
+	sess, ok := h.redeem(w, r)
+	if !ok {
+		return
+	}
 
-		reason := "closed"
-		defer func() {
-			sess.Zeroize()
-			store.Remove(sess.ID())
-			endAudit(aud, sess, reason)
-			logger.Info().
-				Str("host", sess.Host).
-				Str("target_id", sess.TargetID).
-				Str("secret_id", sess.SecretID).
-				Str("actor_user_id", sess.ActorUserID).
-				Str("reason", reason).
-				Msg("ssh session closed")
-		}()
+	reason := "closed"
+	defer func() { h.teardown(sess, reason) }()
 
-		// Every step that can fail runs before the upgrade, each bounded, so
-		// a failure reaches the client as a sentence naming the step instead
-		// of a socket that never opens.
-		st := newSteps(sess)
-		openCtx, cancelOpen := context.WithTimeout(r.Context(), cfg.OpenTimeout)
-		tgt, oerr := openTarget(openCtx, cfg, keys, sess, st)
-		cancelOpen()
-		if oerr != nil {
-			reason = oerr.msg
-			st.failed(oerr)
-			refuse(w, r, upgrader, cfg, oerr)
-			return
-		}
-		defer tgt.close()
-		client, sshSess := tgt.client, tgt.session
+	// Every step that can fail runs before the upgrade, each bounded, so
+	// a failure reaches the client as a sentence naming the step instead
+	// of a socket that never opens.
+	st := newSteps(sess)
+	tgt, oerr := h.open(r, sess, st)
+	if oerr != nil {
+		reason = oerr.msg
+		st.failed(oerr)
+		refuse(w, r, h.upgrader, h.cfg, oerr)
+		return
+	}
+	defer tgt.close()
 
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			reason = "ws upgrade failed"
-			logFailure(sess, reason, err)
-			return
-		}
-		defer func() { _ = conn.Close() }()
-		st.done("upgraded")
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		reason = "ws upgrade failed"
+		logFailure(sess, reason, err)
+		return
+	}
+	defer func() { _ = conn.Close() }()
+	st.done("upgraded")
 
-		// writeMu serializes every write to conn: gorilla/websocket forbids
-		// concurrent writers, and the stdout/stderr pumps plus the ping
-		// ticker below all write independently.
-		var writeMu sync.Mutex
+	relay(conn, tgt, h.cfg)
+}
 
-		// done is closed exactly once, in the deferred cleanup below, right
-		// before the handler returns. Every background goroutine started
-		// here selects on it so none outlives the handler.
-		done := make(chan struct{})
-		defer close(done)
+// redeem checks the origin, then consumes the single-use ticket. On a
+// refusal it has already answered the client and reports false.
+func (h *handler) redeem(w http.ResponseWriter, r *http.Request) (*session.Session, bool) {
+	// Checked before the ticket is consumed, so a page on another origin
+	// can't burn a ticket the real UI is about to use.
+	if !h.origins.allowed(r) {
+		logger.Warn().Str("origin", r.Header.Get("Origin")).Msg("ssh session rejected: origin not allowed")
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return nil, false
+	}
+	sess, ok := h.store.Consume(r.URL.Query().Get("ticket"))
+	if !ok {
+		logger.Warn().Msg("ssh session rejected: invalid or expired ticket")
+		http.Error(w, "invalid or expired ticket", http.StatusForbidden)
+		return nil, false
+	}
 
-		// forceClose unblocks any pump currently parked in Read/Write on
-		// either side by closing both the SSH client and the WS connection.
-		// Safe to call more than once (including from multiple goroutines,
-		// and even though client/conn are also closed by the defers above):
-		// a redundant Close just returns an already-closed error, which is
-		// ignored everywhere in this handler.
-		forceClose := func() {
-			_ = client.Close()
-			_ = conn.Close()
-		}
+	logger.Info().
+		Str("host", sess.Host).
+		Int32("port", sess.Port).
+		Str("target_id", sess.TargetID).
+		Str("secret_id", sess.SecretID).
+		Str("actor_user_id", sess.ActorUserID).
+		Bool("reference", !sess.HasKey()).
+		Msg("ssh session opening")
+	return sess, true
+}
 
-		// (a) WS keepalive / read deadline (browser side). If the browser
-		// goes dark, the ping ticker's writes may still succeed for a while
-		// (TCP send buffering), but the browser will never renew the read
-		// deadline via a pong, so the next ReadMessage in the ws->ssh loop
-		// below fails once the deadline lapses -- breaking that loop and
-		// driving teardown.
-		_ = conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
-		conn.SetPongHandler(func(string) error {
-			return conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
-		})
-		go func() {
-			ticker := time.NewTicker(cfg.PingPeriod)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-done:
-					return
-				case <-ticker.C:
-					writeMu.Lock()
-					perr := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(cfg.WriteWait))
-					writeMu.Unlock()
-					if perr != nil {
-						forceClose()
-						return
-					}
-				}
-			}
-		}()
+// open runs the bounded open (credential, dial, shell) under the open timeout.
+func (h *handler) open(r *http.Request, sess *session.Session, st *steps) (*target, *openError) {
+	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.OpenTimeout)
+	defer cancel()
+	return openTarget(ctx, h.cfg, h.keys, sess, st)
+}
 
-		// (b) SSH keepalive (target side). Detects a target that goes
-		// silently dead without ever sending EOF (e.g. a network partition
-		// with no clean FIN/RST) -- the WS-side deadline above only guards
-		// against a dead browser, not a dead target.
-		go func() {
-			ticker := time.NewTicker(cfg.SSHKeepaliveInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-done:
-					return
-				case <-ticker.C:
-					if _, _, kerr := client.SendRequest("keepalive@openssh.com", true, nil); kerr != nil { // scrub:allow=email -- an SSH request name, not an address
-						forceClose()
-						return
-					}
-				}
-			}
-		}()
+// teardown is the one exit path every session runs: zeroize the key
+// material, remove the session from the store, emit the audit event.
+func (h *handler) teardown(sess *session.Session, reason string) {
+	sess.Zeroize()
+	h.store.Remove(sess.ID())
+	endAudit(h.aud, sess, reason)
+	logger.Info().
+		Str("host", sess.Host).
+		Str("target_id", sess.TargetID).
+		Str("secret_id", sess.SecretID).
+		Str("actor_user_id", sess.ActorUserID).
+		Str("reason", reason).
+		Msg("ssh session closed")
+}
 
-		// (c) Absolute max-session cutoff. Bounds how long key material can
-		// stay resident even under continuous legitimate activity.
-		go func() {
-			timer := time.NewTimer(cfg.MaxSessionDuration)
-			defer timer.Stop()
+// relay pumps bytes between the WebSocket and the SSH session until either
+// side closes, a liveness check fails, or the absolute cutoff is reached.
+func relay(conn *websocket.Conn, tgt *target, cfg Config) {
+	// writeMu serializes every write to conn: gorilla/websocket forbids
+	// concurrent writers, and the stdout/stderr pumps plus the ping
+	// ticker below all write independently.
+	var writeMu sync.Mutex
+
+	// done is closed exactly once, in the deferred cleanup below, right
+	// before relay returns. Every background goroutine started here
+	// selects on it so none outlives the handler.
+	done := make(chan struct{})
+	defer close(done)
+
+	// forceClose unblocks any pump currently parked in Read/Write on
+	// either side by closing both the SSH client and the WS connection.
+	// Safe to call more than once (including from multiple goroutines,
+	// and even though client/conn are also closed by the caller's defers):
+	// a redundant Close just returns an already-closed error, which is
+	// ignored everywhere in this handler.
+	forceClose := func() {
+		_ = tgt.client.Close()
+		_ = conn.Close()
+	}
+
+	startWSKeepalive(conn, cfg, &writeMu, done, forceClose)
+	startSSHKeepalive(tgt.client, cfg, done, forceClose)
+	startMaxSession(cfg, done, forceClose)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go pumpOutput(&wg, tgt.stdout, conn, &writeMu)
+	go pumpOutput(&wg, tgt.stderr, conn, &writeMu)
+
+	readInput(conn, tgt)
+	_ = tgt.stdin.Close()
+	wg.Wait()
+}
+
+// startWSKeepalive is the browser-side liveness check: a read deadline
+// renewed by pongs, and a ping ticker. If the browser goes dark, the ping
+// writes may still succeed for a while (TCP send buffering), but the browser
+// never renews the read deadline via a pong, so the next ReadMessage in
+// readInput fails once the deadline lapses and teardown follows.
+func startWSKeepalive(conn *websocket.Conn, cfg Config, writeMu *sync.Mutex, done <-chan struct{}, forceClose func()) {
+	_ = conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
+	})
+	go func() {
+		ticker := time.NewTicker(cfg.PingPeriod)
+		defer ticker.Stop()
+		for {
 			select {
 			case <-done:
-			case <-timer.C:
-				forceClose()
-			}
-		}()
-
-		writeToWS := func(p []byte) error {
-			writeMu.Lock()
-			defer writeMu.Unlock()
-			return conn.WriteMessage(websocket.BinaryMessage, p)
-		}
-
-		var wg sync.WaitGroup
-		pump := func(src io.Reader) {
-			defer wg.Done()
-			buf := make([]byte, 32*1024)
-			for {
-				n, rerr := src.Read(buf)
-				if n > 0 {
-					if werr := writeToWS(buf[:n]); werr != nil {
-						_ = conn.Close()
-						return
-					}
-				}
-				if rerr != nil {
-					_ = conn.Close()
+				return
+			case <-ticker.C:
+				writeMu.Lock()
+				perr := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(cfg.WriteWait))
+				writeMu.Unlock()
+				if perr != nil {
+					forceClose()
 					return
 				}
 			}
 		}
-		wg.Add(2)
-		go pump(tgt.stdout)
-		go pump(tgt.stderr)
+	}()
+}
 
-		// ws -> ssh stdin (plus resize control frames).
+// startSSHKeepalive is the target-side liveness check. It detects a target
+// that goes silently dead without ever sending EOF (e.g. a network partition
+// with no clean FIN/RST) -- the WS-side deadline only guards against a dead
+// browser, not a dead target.
+func startSSHKeepalive(client *ssh.Client, cfg Config, done <-chan struct{}, forceClose func()) {
+	go func() {
+		ticker := time.NewTicker(cfg.SSHKeepaliveInterval)
+		defer ticker.Stop()
 		for {
-			mt, data, rerr := conn.ReadMessage()
-			if rerr != nil {
-				break
-			}
-			if mt == websocket.TextMessage {
-				var rm resizeMsg
-				if json.Unmarshal(data, &rm) == nil && rm.Type == "resize" && rm.Cols > 0 && rm.Rows > 0 {
-					_ = sshSess.WindowChange(rm.Rows, rm.Cols)
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if _, _, kerr := client.SendRequest("keepalive@openssh.com", true, nil); kerr != nil { // scrub:allow=email -- an SSH request name, not an address
+					forceClose()
+					return
 				}
-				continue
-			}
-			if _, werr := tgt.stdin.Write(data); werr != nil {
-				break
 			}
 		}
-		_ = tgt.stdin.Close()
-		wg.Wait()
+	}()
+}
+
+// startMaxSession is the absolute cutoff. It bounds how long key material can
+// stay resident even under continuous legitimate activity.
+func startMaxSession(cfg Config, done <-chan struct{}, forceClose func()) {
+	go func() {
+		timer := time.NewTimer(cfg.MaxSessionDuration)
+		defer timer.Stop()
+		select {
+		case <-done:
+		case <-timer.C:
+			forceClose()
+		}
+	}()
+}
+
+// pumpOutput copies one SSH output stream to the WebSocket until either side
+// ends, then closes the WebSocket.
+func pumpOutput(wg *sync.WaitGroup, src io.Reader, conn *websocket.Conn, writeMu *sync.Mutex) {
+	defer wg.Done()
+	buf := make([]byte, 32*1024)
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			writeMu.Lock()
+			werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n])
+			writeMu.Unlock()
+			if werr != nil {
+				_ = conn.Close()
+				return
+			}
+		}
+		if rerr != nil {
+			_ = conn.Close()
+			return
+		}
+	}
+}
+
+// readInput is the ws -> ssh stdin loop (plus resize control frames). It
+// returns when the WebSocket read or the stdin write fails.
+func readInput(conn *websocket.Conn, tgt *target) {
+	for {
+		mt, data, rerr := conn.ReadMessage()
+		if rerr != nil {
+			return
+		}
+		if mt == websocket.TextMessage {
+			var rm resizeMsg
+			if json.Unmarshal(data, &rm) == nil && rm.Type == "resize" && rm.Cols > 0 && rm.Rows > 0 {
+				_ = tgt.session.WindowChange(rm.Rows, rm.Cols)
+			}
+			continue
+		}
+		if _, werr := tgt.stdin.Write(data); werr != nil {
+			return
+		}
 	}
 }
 

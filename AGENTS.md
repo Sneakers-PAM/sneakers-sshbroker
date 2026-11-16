@@ -78,8 +78,9 @@ Follow the logging rules in `CLAUDE.md`. In short:
 - The vault and audit client stubs in `gen/go/thirdparty/` are generated from the commits pinned
   in `proto-refs.env` (see docs/api.md, "Calling other services"); never import another
   service's Go module.
-- The lint config exempts `HandlerWithConfig` in `internal/wsproxy` from the complexity linters; if
-  you split it, keep the teardown (zeroize, remove from the store, audit) on every exit path.
+- `HandlerWithConfig` in `internal/wsproxy` is split into `redeem`, `open`, `relay` and the
+  liveness helpers; keep the one teardown (zeroize, remove from the store, audit) on every exit
+  path.
 - `go.mod` holds tagged releases only: no `replace` directive, and no pseudo-version (`@main`,
   `@<sha>`) of a `github.com/Bugs5382/*` or `github.com/Sneakers-PAM/*` module; the
   `proto-sync / check` job fails on either. To compile and test against a local package checkout,
