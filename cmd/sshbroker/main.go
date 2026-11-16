@@ -147,7 +147,7 @@ func callerDialOptions(prov *mtls.Provider) []grpc.DialOption {
 	if prov != nil {
 		creds = prov.DialOption()
 	}
-	opts := []grpc.DialOption{creds, server.ClientStatsHandler()}
+	opts := []grpc.DialOption{creds, server.ClientStatsHandler(), server.ClientLogging(logger)}
 	tok, ok, err := workloadauth.DialOptionFromEnv(os.Getenv)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("workload token")
