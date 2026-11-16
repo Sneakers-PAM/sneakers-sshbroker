@@ -68,3 +68,19 @@ func TestRedisOptionsFromRefusesUsername(t *testing.T) {
 		t.Fatal("expected redisOptionsFrom to refuse a username")
 	}
 }
+
+func TestHealthPort(t *testing.T) {
+	t.Setenv("HEALTH_PORT", "")
+	if got := healthPort(); got != "9098" {
+		t.Fatalf("default = %q, want 9098", got)
+	}
+	t.Setenv("HEALTH_PORT", "9199")
+	if got := healthPort(); got != "9199" {
+		t.Fatalf("HEALTH_PORT = %q, want 9199", got)
+	}
+	t.Setenv("HEALTH_PORT", "")
+	t.Setenv("MTLS_HEALTH_PORT", "9200")
+	if got := healthPort(); got != "9098" {
+		t.Fatalf("the old MTLS_HEALTH_PORT name is read: %q", got)
+	}
+}
