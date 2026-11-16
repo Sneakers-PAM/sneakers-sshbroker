@@ -5,6 +5,7 @@ go 1.26.11
 require (
 	github.com/Bugs5382/go-buildinfo v1.1.0
 	github.com/Bugs5382/go-log v1.4.0
+	github.com/Bugs5382/go-mtls v1.0.0
 	github.com/Bugs5382/go-otel v1.6.0
 	github.com/Bugs5382/go-redis v1.3.0
 	github.com/Bugs5382/go-workload-identity v1.0.1
