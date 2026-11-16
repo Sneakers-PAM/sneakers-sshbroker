@@ -28,7 +28,7 @@ func TestRun_HealthCheckReportsBuild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- Run(ctx, port, nil) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() { cancel(); <-done }) //nolint:errcheck // Run returns nil after cancel
 	checkBuildHeaders(t, port)
 }
 
@@ -45,7 +45,7 @@ func TestRunWithHealth_NotServingStillReportsBuild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- RunWithHealth(ctx, port, checker, nil) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() { cancel(); <-done }) //nolint:errcheck // Run returns nil after cancel
 	if st := checkBuildHeaders(t, port); st != healthpb.HealthCheckResponse_NOT_SERVING {
 		t.Fatalf("status = %v, want NOT_SERVING", st)
 	}

@@ -111,7 +111,7 @@ func RunWithHealth(ctx context.Context, port string, checker *health.Checker, re
 		case <-time.After(gracefulStopTimeout):
 			s.Stop()
 		}
-		<-errCh
+		<-errCh //nolint:errcheck // Serve returns after the stop; nothing to report
 		return nil
 	case err := <-errCh:
 		return err
