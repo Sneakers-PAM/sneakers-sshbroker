@@ -34,6 +34,7 @@ const (
 	VaultService_ImportCertificate_FullMethodName                = "/sneakers.vault.v1.VaultService/ImportCertificate"
 	VaultService_ExportCertificate_FullMethodName                = "/sneakers.vault.v1.VaultService/ExportCertificate"
 	VaultService_ReplaceCertificate_FullMethodName               = "/sneakers.vault.v1.VaultService/ReplaceCertificate"
+	VaultService_ReplaceCertificateForPrincipal_FullMethodName   = "/sneakers.vault.v1.VaultService/ReplaceCertificateForPrincipal"
 	VaultService_ListSecretTypes_FullMethodName                  = "/sneakers.vault.v1.VaultService/ListSecretTypes"
 	VaultService_CreateSecretType_FullMethodName                 = "/sneakers.vault.v1.VaultService/CreateSecretType"
 	VaultService_UpdateSecretType_FullMethodName                 = "/sneakers.vault.v1.VaultService/UpdateSecretType"
@@ -130,6 +131,8 @@ const (
 	VaultService_ConfirmSecretUse_FullMethodName                 = "/sneakers.vault.v1.VaultService/ConfirmSecretUse"
 	VaultService_ListSecretUsesToDecide_FullMethodName           = "/sneakers.vault.v1.VaultService/ListSecretUsesToDecide"
 	VaultService_RedeemSecretUse_FullMethodName                  = "/sneakers.vault.v1.VaultService/RedeemSecretUse"
+	VaultService_RedeemSecretShare_FullMethodName                = "/sneakers.vault.v1.VaultService/RedeemSecretShare"
+	VaultService_RevokeSecretShare_FullMethodName                = "/sneakers.vault.v1.VaultService/RevokeSecretShare"
 	VaultService_CreateUseGrant_FullMethodName                   = "/sneakers.vault.v1.VaultService/CreateUseGrant"
 	VaultService_ListUseGrants_FullMethodName                    = "/sneakers.vault.v1.VaultService/ListUseGrants"
 	VaultService_RevokeUseGrant_FullMethodName                   = "/sneakers.vault.v1.VaultService/RevokeUseGrant"
@@ -161,6 +164,7 @@ type VaultServiceClient interface {
 	ImportCertificate(ctx context.Context, in *ImportCertificateRequest, opts ...grpc.CallOption) (*ImportCertificateResponse, error)
 	ExportCertificate(ctx context.Context, in *ExportCertificateRequest, opts ...grpc.CallOption) (*ExportCertificateResponse, error)
 	ReplaceCertificate(ctx context.Context, in *ReplaceCertificateRequest, opts ...grpc.CallOption) (*ReplaceCertificateResponse, error)
+	ReplaceCertificateForPrincipal(ctx context.Context, in *ReplaceCertificateForPrincipalRequest, opts ...grpc.CallOption) (*ReplaceCertificateForPrincipalResponse, error)
 	// Secret types
 	ListSecretTypes(ctx context.Context, in *ListSecretTypesRequest, opts ...grpc.CallOption) (*ListSecretTypesResponse, error)
 	CreateSecretType(ctx context.Context, in *CreateSecretTypeRequest, opts ...grpc.CallOption) (*CreateSecretTypeResponse, error)
@@ -301,6 +305,11 @@ type VaultServiceClient interface {
 	ConfirmSecretUse(ctx context.Context, in *ConfirmSecretUseRequest, opts ...grpc.CallOption) (*ConfirmSecretUseResponse, error)
 	ListSecretUsesToDecide(ctx context.Context, in *ListSecretUsesToDecideRequest, opts ...grpc.CallOption) (*ListSecretUsesToDecideResponse, error)
 	RedeemSecretUse(ctx context.Context, in *RedeemSecretUseRequest, opts ...grpc.CallOption) (*RedeemSecretUseResponse, error)
+	// Releases a one-time share's value once, to whoever presents the hash of its
+	// token, while the use is approved and unexpired.
+	RedeemSecretShare(ctx context.Context, in *RedeemSecretShareRequest, opts ...grpc.CallOption) (*RedeemSecretShareResponse, error)
+	// Ends a share early. The creator or a site admin.
+	RevokeSecretShare(ctx context.Context, in *RevokeSecretShareRequest, opts ...grpc.CallOption) (*RevokeSecretShareResponse, error)
 	CreateUseGrant(ctx context.Context, in *CreateUseGrantRequest, opts ...grpc.CallOption) (*CreateUseGrantResponse, error)
 	ListUseGrants(ctx context.Context, in *ListUseGrantsRequest, opts ...grpc.CallOption) (*ListUseGrantsResponse, error)
 	RevokeUseGrant(ctx context.Context, in *RevokeUseGrantRequest, opts ...grpc.CallOption) (*RevokeUseGrantResponse, error)
@@ -435,6 +444,16 @@ func (c *vaultServiceClient) ReplaceCertificate(ctx context.Context, in *Replace
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReplaceCertificateResponse)
 	err := c.cc.Invoke(ctx, VaultService_ReplaceCertificate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) ReplaceCertificateForPrincipal(ctx context.Context, in *ReplaceCertificateForPrincipalRequest, opts ...grpc.CallOption) (*ReplaceCertificateForPrincipalResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReplaceCertificateForPrincipalResponse)
+	err := c.cc.Invoke(ctx, VaultService_ReplaceCertificateForPrincipal_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1401,6 +1420,26 @@ func (c *vaultServiceClient) RedeemSecretUse(ctx context.Context, in *RedeemSecr
 	return out, nil
 }
 
+func (c *vaultServiceClient) RedeemSecretShare(ctx context.Context, in *RedeemSecretShareRequest, opts ...grpc.CallOption) (*RedeemSecretShareResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RedeemSecretShareResponse)
+	err := c.cc.Invoke(ctx, VaultService_RedeemSecretShare_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *vaultServiceClient) RevokeSecretShare(ctx context.Context, in *RevokeSecretShareRequest, opts ...grpc.CallOption) (*RevokeSecretShareResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeSecretShareResponse)
+	err := c.cc.Invoke(ctx, VaultService_RevokeSecretShare_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *vaultServiceClient) CreateUseGrant(ctx context.Context, in *CreateUseGrantRequest, opts ...grpc.CallOption) (*CreateUseGrantResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateUseGrantResponse)
@@ -1520,6 +1559,7 @@ type VaultServiceServer interface {
 	ImportCertificate(context.Context, *ImportCertificateRequest) (*ImportCertificateResponse, error)
 	ExportCertificate(context.Context, *ExportCertificateRequest) (*ExportCertificateResponse, error)
 	ReplaceCertificate(context.Context, *ReplaceCertificateRequest) (*ReplaceCertificateResponse, error)
+	ReplaceCertificateForPrincipal(context.Context, *ReplaceCertificateForPrincipalRequest) (*ReplaceCertificateForPrincipalResponse, error)
 	// Secret types
 	ListSecretTypes(context.Context, *ListSecretTypesRequest) (*ListSecretTypesResponse, error)
 	CreateSecretType(context.Context, *CreateSecretTypeRequest) (*CreateSecretTypeResponse, error)
@@ -1660,6 +1700,11 @@ type VaultServiceServer interface {
 	ConfirmSecretUse(context.Context, *ConfirmSecretUseRequest) (*ConfirmSecretUseResponse, error)
 	ListSecretUsesToDecide(context.Context, *ListSecretUsesToDecideRequest) (*ListSecretUsesToDecideResponse, error)
 	RedeemSecretUse(context.Context, *RedeemSecretUseRequest) (*RedeemSecretUseResponse, error)
+	// Releases a one-time share's value once, to whoever presents the hash of its
+	// token, while the use is approved and unexpired.
+	RedeemSecretShare(context.Context, *RedeemSecretShareRequest) (*RedeemSecretShareResponse, error)
+	// Ends a share early. The creator or a site admin.
+	RevokeSecretShare(context.Context, *RevokeSecretShareRequest) (*RevokeSecretShareResponse, error)
 	CreateUseGrant(context.Context, *CreateUseGrantRequest) (*CreateUseGrantResponse, error)
 	ListUseGrants(context.Context, *ListUseGrantsRequest) (*ListUseGrantsResponse, error)
 	RevokeUseGrant(context.Context, *RevokeUseGrantRequest) (*RevokeUseGrantResponse, error)
@@ -1715,6 +1760,9 @@ func (UnimplementedVaultServiceServer) ExportCertificate(context.Context, *Expor
 }
 func (UnimplementedVaultServiceServer) ReplaceCertificate(context.Context, *ReplaceCertificateRequest) (*ReplaceCertificateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReplaceCertificate not implemented")
+}
+func (UnimplementedVaultServiceServer) ReplaceCertificateForPrincipal(context.Context, *ReplaceCertificateForPrincipalRequest) (*ReplaceCertificateForPrincipalResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReplaceCertificateForPrincipal not implemented")
 }
 func (UnimplementedVaultServiceServer) ListSecretTypes(context.Context, *ListSecretTypesRequest) (*ListSecretTypesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSecretTypes not implemented")
@@ -2004,6 +2052,12 @@ func (UnimplementedVaultServiceServer) ListSecretUsesToDecide(context.Context, *
 func (UnimplementedVaultServiceServer) RedeemSecretUse(context.Context, *RedeemSecretUseRequest) (*RedeemSecretUseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RedeemSecretUse not implemented")
 }
+func (UnimplementedVaultServiceServer) RedeemSecretShare(context.Context, *RedeemSecretShareRequest) (*RedeemSecretShareResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RedeemSecretShare not implemented")
+}
+func (UnimplementedVaultServiceServer) RevokeSecretShare(context.Context, *RevokeSecretShareRequest) (*RevokeSecretShareResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeSecretShare not implemented")
+}
 func (UnimplementedVaultServiceServer) CreateUseGrant(context.Context, *CreateUseGrantRequest) (*CreateUseGrantResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateUseGrant not implemented")
 }
@@ -2267,6 +2321,24 @@ func _VaultService_ReplaceCertificate_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(VaultServiceServer).ReplaceCertificate(ctx, req.(*ReplaceCertificateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_ReplaceCertificateForPrincipal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplaceCertificateForPrincipalRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).ReplaceCertificateForPrincipal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_ReplaceCertificateForPrincipal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).ReplaceCertificateForPrincipal(ctx, req.(*ReplaceCertificateForPrincipalRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3999,6 +4071,42 @@ func _VaultService_RedeemSecretUse_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VaultService_RedeemSecretShare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RedeemSecretShareRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).RedeemSecretShare(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_RedeemSecretShare_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).RedeemSecretShare(ctx, req.(*RedeemSecretShareRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VaultService_RevokeSecretShare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeSecretShareRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VaultServiceServer).RevokeSecretShare(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VaultService_RevokeSecretShare_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VaultServiceServer).RevokeSecretShare(ctx, req.(*RevokeSecretShareRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _VaultService_CreateUseGrant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateUseGrantRequest)
 	if err := dec(in); err != nil {
@@ -4233,6 +4341,10 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplaceCertificate",
 			Handler:    _VaultService_ReplaceCertificate_Handler,
+		},
+		{
+			MethodName: "ReplaceCertificateForPrincipal",
+			Handler:    _VaultService_ReplaceCertificateForPrincipal_Handler,
 		},
 		{
 			MethodName: "ListSecretTypes",
@@ -4617,6 +4729,14 @@ var VaultService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RedeemSecretUse",
 			Handler:    _VaultService_RedeemSecretUse_Handler,
+		},
+		{
+			MethodName: "RedeemSecretShare",
+			Handler:    _VaultService_RedeemSecretShare_Handler,
+		},
+		{
+			MethodName: "RevokeSecretShare",
+			Handler:    _VaultService_RevokeSecretShare_Handler,
 		},
 		{
 			MethodName: "CreateUseGrant",
